@@ -1,0 +1,247 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        font-family: 'Outfit', sans-serif;
+        background: #fdfaf7;
+        color: #1c1917;
+        margin: 0;
+    }
+
+    ::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f3f0ec;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: #5f0f40;
+        border-radius: 10px;
+    }
+}
+
+@layer components {
+    .btn-primary {
+        @apply bg-orchid-700 hover:bg-orchid-800 text-white font-medium px-4 py-2 rounded-xl transition-all duration-200 flex items-center gap-2 shadow-sm;
+    }
+
+    .btn-secondary {
+        @apply bg-white hover:bg-orchid-50 text-orchid-800 border border-orchid-200 font-medium px-4 py-2 rounded-xl transition-all duration-200 flex items-center gap-2;
+    }
+
+    .btn-danger {
+        @apply bg-crimson-600 hover:bg-crimson-700 text-white font-medium px-4 py-2 rounded-xl transition-all duration-200 flex items-center gap-2;
+    }
+
+    .btn-success {
+        @apply bg-jade-600 hover:bg-jade-700 text-white font-medium px-4 py-2 rounded-xl transition-all duration-200 flex items-center gap-2;
+    }
+
+    .card {
+        @apply bg-white rounded-2xl shadow-sm border border-orchid-100/60 p-5;
+    }
+
+    .input {
+        @apply w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orchid-400 focus:border-transparent transition-all bg-white;
+    }
+
+    .label {
+        @apply block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide;
+    }
+
+    .badge-green {
+        @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-jade-100 text-jade-700;
+    }
+
+    .badge-red {
+        @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-crimson-100 text-crimson-700;
+    }
+
+    .badge-yellow {
+        @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700;
+    }
+
+    .badge-purple {
+        @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orchid-100 text-orchid-700;
+    }
+
+    .table-row {
+        @apply border-b border-gray-50 hover:bg-orchid-50/40 transition-colors;
+    }
+
+    .th {
+        @apply text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3;
+    }
+
+    .td {
+        @apply px-4 py-3 text-sm text-gray-700;
+    }
+
+    .sidebar-item {
+        @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer;
+    }
+
+    .sidebar-item-active {
+        @apply bg-orchid-700 text-white shadow-md;
+    }
+
+    .sidebar-item-inactive {
+        @apply text-orchid-200 hover:bg-white/10 hover:text-white;
+    }
+
+    .stat-card {
+        @apply card transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md;
+    }
+}
+
+.page-enter {
+    animation: pageIn 0.25s ease-out;
+}
+
+.report-export-mode {
+    width: 1120px;
+    max-width: none;
+    padding: 28px !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+.report-export-page {
+    overflow: hidden !important;
+}
+
+.report-export-mode .report-table-scroll,
+.report-export-mode .overflow-auto,
+.report-export-mode .overflow-y-auto,
+.report-export-mode .overflow-x-auto {
+    max-height: none !important;
+    overflow: visible !important;
+}
+
+.report-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.report-table th {
+    background: #f8fafc;
+    white-space: nowrap;
+}
+
+.report-table td,
+.report-table th {
+    vertical-align: middle;
+}
+
+.report-export-mode thead {
+    position: static !important;
+}
+
+.report-export-mode .card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+.report-export-mode .report-table {
+    min-width: 0 !important;
+    table-layout: fixed;
+}
+
+.report-export-mode .report-table th,
+.report-export-mode .report-table td {
+    padding: 8px 9px !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere;
+}
+
+.report-export-mode .report-detail-table th,
+.report-export-mode .report-detail-table td {
+    padding: 7px 6px !important;
+    font-size: 9px !important;
+}
+
+.report-export-mode .report-detail-table th:nth-child(1),
+.report-export-mode .report-detail-table td:nth-child(1) {
+    width: 92px;
+}
+
+.report-export-mode .report-detail-table th:nth-child(2),
+.report-export-mode .report-detail-table td:nth-child(2) {
+    width: 78px;
+}
+
+.report-export-mode .report-detail-table th:nth-child(3),
+.report-export-mode .report-detail-table td:nth-child(3) {
+    width: 105px;
+}
+
+.report-export-mode .report-detail-table th:nth-child(4),
+.report-export-mode .report-detail-table td:nth-child(4),
+.report-export-mode .report-detail-table th:nth-child(5),
+.report-export-mode .report-detail-table td:nth-child(5) {
+    width: 72px;
+}
+
+.animate-in {
+    animation-duration: 400ms;
+    animation-fill-mode: both;
+}
+
+.fade-in {
+    animation-name: fadeIn;
+}
+
+.zoom-in {
+    animation-name: zoomIn;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes zoomIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pageIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media print {
+    body.code-label-printing * {
+        visibility: hidden;
+    }
+
+    body.code-label-printing .code-print-area,
+    body.code-label-printing .code-print-area * {
+        visibility: visible;
+    }
+
+    body.code-label-printing .code-print-area {
+        position: fixed;
+        inset: 12mm auto auto 12mm;
+        width: 70mm;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+
+    body.code-label-printing .no-print {
+        display: none !important;
+    }
+}
