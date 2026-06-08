@@ -720,17 +720,17 @@ export default function POS() {
                         </div>
 
                         {(metodoPago === 'efectivo' || isApartado) && (
-                            <div className="mb-2 bg-green-50/50 p-1.5 rounded-lg border border-green-100">
-                                <div className="flex justify-between items-center mb-0.5">
-                                    <label className="text-[8px] font-bold text-green-700 uppercase tracking-wider">{isApartado ? 'Anticipo' : 'Recibido'}</label>
-                                    {!isApartado && cambio > 0.01 && <span className="text-[8px] font-black text-green-600 tracking-tighter">CAMBIO: {fmt(cambio)}</span>}
+                            <div className="mb-3 bg-emerald-50 p-3 rounded-xl border border-emerald-300 shadow-sm">
+                                <div className="flex justify-between items-center mb-1.5">
+                                    <label className="text-[10px] font-black text-emerald-900 uppercase tracking-wider">{isApartado ? 'Anticipo' : 'Recibido'}</label>
+                                    {!isApartado && cambio > 0.01 && <span className="text-[10px] font-black text-emerald-800 tracking-tighter">CAMBIO: {fmt(cambio)}</span>}
                                 </div>
                                 <div className="relative">
-                                    <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-green-600 font-bold text-[10px]">$</span>
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-900 font-black text-base">$</span>
                                     <input type="number" min="0" step="0.01" value={montoPagado} 
                                         onChange={e => setMontoPagado(e.target.value < 0 ? 0 : e.target.value)}
                                         onFocus={e => e.target.select()}
-                                        className="w-full bg-white border border-green-200 rounded-md pl-4 pr-1 py-0.5 text-[11px] font-bold text-green-700 focus:ring-1 focus:ring-green-400 focus:outline-none transition-all" 
+                                        className="w-full bg-white border-2 border-emerald-400 rounded-lg pl-8 pr-3 py-2 text-lg font-black text-emerald-950 placeholder:text-emerald-700/65 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-600 focus:outline-none transition-all" 
                                         placeholder={isApartado ? 'Monto anticipo' : total.toFixed(2)} />
                                 </div>
                             </div>
