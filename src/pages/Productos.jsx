@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
-import { productosAPI, categoriasAPI, proveedoresAPI } from '../services/api'
+import { productosAPI, categoriasAPI, proveedoresAPI, produccionAPI } from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Edit2, Package, AlertTriangle, TrendingDown, TrendingUp, X, Trash2, Image as ImageIcon, Upload, ImageOff, Barcode, ScanLine, Wand2 } from 'lucide-react'
+import { Plus, Edit2, Package, AlertTriangle, TrendingDown, TrendingUp, X, Trash2, Image as ImageIcon, Upload, ImageOff, Barcode, ScanLine, Wand2, Calculator, Factory } from 'lucide-react'
 
 import { useUI } from '../context/UIContext'
 import { useAuth } from '../context/AuthContext'
 
-const fmt = (n) => `$${Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
+const fmt = (n) => `MXN ${Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
 
 import Modal from '../components/common/Modal'
 import CodeScanner from '../components/common/CodeScanner'
@@ -31,6 +31,10 @@ export default function Productos() {
     const [uploadingImage, setUploadingImage] = useState(false)
     const [nuevaCat, setNuevaCat] = useState('')
     const [mostrandoNuevaCat, setMostrandoNuevaCat] = useState(false)
+    const [insumosProduccion, setInsumosProduccion] = useState([])
+    const [calculoProduccion, setCalculoProduccion] = useState(null)
+    const [calculandoCosto, setCalculandoCosto] = useState(false)
+    const [margenGanancia, setMargenGanancia] = useState(60)
 
     const load = () => {
         setLoading(true)
@@ -59,8 +63,43 @@ export default function Productos() {
 
     useEffect(() => { load() }, [buscar, catFiltro])
 
-    const openCrear = () => { setForm(emptyProd); setModal('crear') }
-    const openEditar = (p) => { setSelected(p); setForm({ ...p, proveedor_id: p.proveedor_id || '' }); setModal('editar') }
+    const resetCostoProduccion = () => {
+        setInsumosProduccion([])
+        setCalculoProduccion(null)
+        setCalculandoCosto(false)
+        setMargenGanancia(60)
+    }
+
+    const openCrear = () => { setForm(emptyProd); resetCostoProduccion(); setModal('crear') }
+    const openEditar = async (p) => {
+        setSelected(p)
+        setForm({ ...p, proveedor_id: p.proveedor_id || '' })
+        setInsumosProduccion([])
+        setCalculoProduccion(null)
+        if (Number(p.precio_compra || 0) > 0 && Number(p.precio_venta || 0) > 0) {
+            setMargenGanancia(Math.max(0, ((Number(p.precio_venta) / Number(p.precio_compra)) - 1) * 100).toFixed(1))
+        }
+        setModal('editar')
+        try {
+            const { data } = await produccionAPI.getFormulaProducto(p.id)
+            if (data.insumos?.length) {
+                setInsumosProduccion(data.insumos.map(item => ({
+                    producto_id: item.producto_insumo_id || item.producto_id,
+                    cantidad: Number(item.cantidad || 1),
+                })))
+                setCalculoProduccion({
+                    insumos: data.insumos,
+                    costo_total: Number(data.costo_total || 0),
+                    costo_unitario_produccion: Number(data.costo_total || 0),
+                })
+                if (Number(data.costo_total || 0) > 0 && Number(p.precio_venta || 0) > 0) {
+                    setMargenGanancia(Math.max(0, ((Number(p.precio_venta) / Number(data.costo_total)) - 1) * 100).toFixed(1))
+                }
+            }
+        } catch {
+            toast.error('No se pudo cargar el costo automatizado')
+        }
+    }
     const openStock = (p) => { setSelected(p); setAjuste({ tipo: 'entrada', cantidad: 0, motivo: '' }); setModal('stock') }
     const openCodigos = (p) => { setSelected(p); setModal('codigos') }
     const openMovimientos = async (p) => {
@@ -74,6 +113,7 @@ export default function Productos() {
         setSelected(null); 
         setMostrandoNuevaCat(false);
         setNuevaCat('');
+        resetCostoProduccion();
     }
 
     const handleCrearCat = async () => {
@@ -93,14 +133,65 @@ export default function Productos() {
         } catch (e) { toast.error('Error al crear categoría') }
     }
 
+    const addInsumoProduccion = () => {
+        setInsumosProduccion(prev => [...prev, { producto_id: '', cantidad: 1 }])
+        setCalculoProduccion(null)
+    }
+
+    const updateInsumoProduccion = (idx, key, value) => {
+        setInsumosProduccion(prev => prev.map((item, i) => i === idx ? { ...item, [key]: value } : item))
+        setCalculoProduccion(null)
+    }
+
+    const removeInsumoProduccion = (idx) => {
+        setInsumosProduccion(prev => prev.filter((_, i) => i !== idx))
+        setCalculoProduccion(null)
+    }
+
+    const calcularCostoProduccion = async () => {
+        if (!insumosProduccion.length) return toast.error('Agrega al menos un insumo')
+        setCalculandoCosto(true)
+        try {
+            const { data } = await produccionAPI.calcularCosto({ cantidad_producida: 1, insumos: insumosProduccion })
+            const costo = Number(data.costo_unitario_produccion || data.costo_total || 0)
+            setCalculoProduccion(data)
+            f('precio_compra', costo.toFixed(2))
+            f('precio_venta', precioVentaConMargen(costo).toFixed(2))
+            toast.success('Costo y precio de venta aplicados')
+            return costo
+        } catch (error) {
+            toast.error(error.response?.data?.mensaje || 'No se pudo calcular el costo')
+            throw error
+        } finally {
+            setCalculandoCosto(false)
+        }
+    }
+
+    const guardarFormulaProducto = async (productoId) => {
+        if (!insumosProduccion.length) return
+        await produccionAPI.guardarFormula({
+            producto_id: productoId,
+            notas: 'Costo automatizado desde formulario de producto',
+            insumos: insumosProduccion,
+        })
+    }
+
     const handleSave = async () => {
         setSaving(true)
         try {
+            const payload = { ...form }
+            if (insumosProduccion.length) {
+                const costo = calculoProduccion ? Number(calculoProduccion.costo_unitario_produccion || calculoProduccion.costo_total || 0) : await calcularCostoProduccion()
+                payload.precio_compra = costo.toFixed(2)
+                payload.precio_venta = precioVentaConMargen(costo).toFixed(2)
+            }
             if (modal === 'crear') {
-                await productosAPI.crear(form)
+                const { data } = await productosAPI.crear(payload)
+                if (data.id) await guardarFormulaProducto(data.id)
                 toast.success('Producto creado')
             } else {
-                await productosAPI.actualizar(selected.id, form)
+                await productosAPI.actualizar(selected.id, payload)
+                await guardarFormulaProducto(selected.id)
                 toast.success('Producto actualizado')
             }
             closeModal(); load()
@@ -167,6 +258,19 @@ export default function Productos() {
     }
 
     const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+    const precioVentaConMargen = (costo, margen = margenGanancia) => {
+        const base = Number(costo || 0)
+        const porcentaje = Number(margen || 0)
+        return base > 0 ? base * (1 + porcentaje / 100) : 0
+    }
+
+    const cambiarMargenGanancia = (value) => {
+        const margen = Number(value) || 0
+        setMargenGanancia(margen)
+        const costo = Number(calculoProduccion?.costo_unitario_produccion || calculoProduccion?.costo_total || form.precio_compra || 0)
+        if (costo > 0) f('precio_venta', precioVentaConMargen(costo, margen).toFixed(2))
+    }
 
     const generarCodigo = () => {
         const prefix = 'BAL'
@@ -265,7 +369,7 @@ export default function Productos() {
 
             {/* Modal Crear/Editar */}
             {(modal === 'crear' || modal === 'editar') && (
-                <Modal title={modal === 'crear' ? 'Nuevo producto' : 'Editar producto'} onClose={closeModal}>
+                <Modal title={modal === 'crear' ? 'Nuevo producto' : 'Editar producto'} onClose={closeModal} maxWidth="max-w-3xl">
                     <div className="space-y-4">
                         <div className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-3">
                             <div className="w-24 h-24 rounded-2xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden shrink-0">
@@ -346,10 +450,65 @@ export default function Productos() {
                                 </select>
                             </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-3">
-                            <div><label className="label">Precio compra</label><input type="number" className="input" value={form.precio_compra} onChange={e => f('precio_compra', e.target.value)} /></div>
-                            <div><label className="label">Precio venta *</label><input type="number" className="input" value={form.precio_venta} onChange={e => f('precio_venta', e.target.value)} /></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div><label className="label">Stock mínimo</label><input type="number" className="input" value={form.stock_minimo} onChange={e => f('stock_minimo', e.target.value)} /></div>
+                        </div>
+                        <div className="rounded-2xl border border-orchid-100 bg-orchid-50/40 p-4 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                    <p className="text-sm font-black text-gray-800 flex items-center gap-2"><Factory size={16} className="text-orchid-700" /> Costo automatizado de producción</p>
+                                    <p className="text-xs text-gray-500">Selecciona insumos, margen y calcula costo/precio de venta.</p>
+                                </div>
+                                <button onClick={addInsumoProduccion} className="btn-secondary text-xs py-1.5 self-start sm:self-auto"><Plus size={14} />Agregar insumo</button>
+                            </div>
+
+                            <div className="space-y-2">
+                                {insumosProduccion.map((item, idx) => (
+                                    <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_38px] gap-2">
+                                        <select className="input" value={item.producto_id} onChange={e => updateInsumoProduccion(idx, 'producto_id', e.target.value)}>
+                                            <option value="">Seleccionar insumo</option>
+                                            {productos.filter(p => Number(p.id) !== Number(selected?.id || 0)).map(p => (
+                                                <option key={p.id} value={p.id}>{p.codigo} · {p.nombre} · {fmt(p.precio_compra)}</option>
+                                            ))}
+                                        </select>
+                                        <input type="number" min="0.0001" step="0.0001" className="input" value={item.cantidad} onChange={e => updateInsumoProduccion(idx, 'cantidad', Number(e.target.value) || 0)} />
+                                        <button onClick={() => removeInsumoProduccion(idx)} className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100">
+                                            <X size={15} />
+                                        </button>
+                                    </div>
+                                ))}
+                                {insumosProduccion.length === 0 && (
+                                    <div className="rounded-xl border border-dashed border-orchid-200 bg-white/70 py-6 text-center text-sm text-gray-400">
+                                        Agrega maceta, celofán, abrillantador u otros insumos.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-1">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
+                                    <div className="rounded-xl bg-white border border-orchid-100 px-3 py-2">
+                                        <p className="text-[10px] font-black uppercase text-gray-400">Costo calculado</p>
+                                        <p className="text-sm font-black text-orchid-800">{fmt(calculoProduccion?.costo_unitario_produccion || calculoProduccion?.costo_total || form.precio_compra)}</p>
+                                    </div>
+                                    <div className="rounded-xl bg-white border border-orchid-100 px-3 py-2">
+                                        <label className="text-[10px] font-black uppercase text-gray-400">Margen ganancia</label>
+                                        <div className="flex items-center gap-1">
+                                            <input type="number" min="0" step="1" className="w-full bg-transparent text-sm font-black text-orchid-800 focus:outline-none" value={margenGanancia} onChange={e => cambiarMargenGanancia(e.target.value)} />
+                                            <span className="text-sm font-black text-orchid-800">%</span>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-xl bg-white border border-jade-100 px-3 py-2">
+                                        <p className="text-[10px] font-black uppercase text-gray-400">Venta sugerida</p>
+                                        <p className="text-sm font-black text-jade-700">
+                                            {fmt(form.precio_venta)}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button onClick={calcularCostoProduccion} disabled={calculandoCosto || insumosProduccion.length === 0} className="btn-primary justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                                    {calculandoCosto ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Calculator size={16} />}
+                                    Calcular y aplicar costo
+                                </button>
+                            </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-50">
                             <div><label className="label">Código SAT (8 dígitos)</label><input className="input" placeholder="01010101" value={form.codigo_sat || ''} onChange={e => f('codigo_sat', e.target.value)} /></div>

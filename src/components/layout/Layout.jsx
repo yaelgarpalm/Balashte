@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useUI } from '../../context/UIContext'
 import { productosAPI, apartadosAPI, comprasAPI, cajaAPI } from '../../services/api'
-import { LayoutDashboard, ShoppingCart, Package, Receipt, Users, Truck, UserCog, BarChart3, LogOut, Flower2, Bell, AlertTriangle, TrendingUp, TrendingDown, X, Gift, Wallet, ClipboardList, Settings, Database, CheckCircle2 } from 'lucide-react'
+import { LayoutDashboard, ShoppingCart, Package, Receipt, Users, Truck, UserCog, BarChart3, LogOut, Flower2, Bell, AlertTriangle, TrendingUp, TrendingDown, X, Gift, Wallet, ClipboardList, Settings, Database, CheckCircle2, Factory } from 'lucide-react'
 
 import Modal from '../common/Modal'
 import toast from 'react-hot-toast'
@@ -16,6 +16,7 @@ const navItems = [
     { to: '/ventas', icon: Receipt, label: 'Ventas', roles: ['admin', 'cajero', 'vendedor'] },
     { to: '/apartados', icon: ClipboardList, label: 'Apartados', roles: ['admin', 'cajero', 'vendedor'] },
     { to: '/productos', icon: Package, label: 'Inventario', roles: ['admin', 'bodeguero'] },
+    { to: '/produccion', icon: Factory, label: 'Producción', roles: ['admin', 'bodeguero', 'produccion'] },
     { to: '/inventario/historial', icon: ClipboardList, label: 'Kardex', roles: ['admin'] },
     { to: '/categorias', icon: Flower2, label: 'Categorías', roles: ['admin', 'bodeguero'] },
     { to: '/clientes', icon: Users, label: 'Clientes', roles: ['admin', 'vendedor'] },

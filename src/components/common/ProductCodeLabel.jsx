@@ -99,7 +99,7 @@ export default function ProductCodeLabel({ code, name, price }) {
 
             <div className="code-print-area rounded-2xl border border-gray-100 bg-white p-4 text-center">
                 <p className="truncate text-sm font-black text-gray-800">{name || 'Producto'}</p>
-                {price !== undefined && <p className="mb-2 text-xs font-bold text-orchid-700">${Number(price || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>}
+                {price !== undefined && <p className="mb-2 text-xs font-bold text-orchid-700">MXN {Number(price || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>}
                 <div className={mode === 'qr' ? 'flex justify-center' : 'hidden'}>
                     <canvas ref={qrRef} />
                 </div>

@@ -22,6 +22,7 @@ import InventarioHistorial from './pages/InventarioHistorial'
 import Configuracion from './pages/Configuracion'
 import Compras from './pages/Compras'
 import Respaldos from './pages/Respaldos'
+import Produccion from './pages/Produccion'
 import { useEffect, useRef } from 'react'
 
 
@@ -62,6 +63,7 @@ function HomeRoute() {
     if (usuario.rol === 'admin') return <Dashboard />
     if (['cajero', 'vendedor'].includes(usuario.rol)) return <Navigate to="/pos" replace />
     if (usuario.rol === 'bodeguero') return <Navigate to="/productos" replace />
+    if (usuario.rol === 'produccion') return <Navigate to="/produccion" replace />
     return <Navigate to="/login" replace />
 }
 
@@ -77,6 +79,7 @@ function AppRoutes() {
                 <Route path="pos" element={<RoleRoute roles={['admin', 'cajero', 'vendedor']}><POS /></RoleRoute>} />
 
                 <Route path="productos" element={<RoleRoute roles={['admin', 'bodeguero']}><Productos /></RoleRoute>} />
+                <Route path="produccion" element={<RoleRoute roles={['admin', 'bodeguero', 'produccion']}><Produccion /></RoleRoute>} />
                 <Route path="categorias" element={<RoleRoute roles={['admin', 'bodeguero']}><Categorias /></RoleRoute>} />
                 <Route path="ventas" element={<RoleRoute roles={['admin', 'cajero', 'vendedor']}><Ventas /></RoleRoute>} />
                 <Route path="clientes" element={<RoleRoute roles={['admin', 'vendedor']}><Clientes /></RoleRoute>} />

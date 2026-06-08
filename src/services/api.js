@@ -135,6 +135,17 @@ export const comprasAPI = {
     alertas: () => api.get('/compras/alertas'),
 }
 
+export const produccionAPI = {
+    getFormulas: (params) => api.get('/produccion/formulas', { params }),
+    getFormulaProducto: (id) => api.get(`/produccion/productos/${id}/formula`),
+    guardarFormula: (data) => api.post('/produccion/formulas', data),
+    eliminarFormula: (id) => api.delete(`/produccion/formulas/${id}`),
+    calcularCosto: (data) => api.post('/produccion/calcular-costo', data),
+    getLotes: (params) => api.get('/produccion/lotes', { params }),
+    getLote: (id) => api.get(`/produccion/lotes/${id}`),
+    crearLote: (data) => api.post('/produccion/lotes', data),
+}
+
 export const stripeAPI = {
     createCheckoutSession: (data) => api.post('/stripe/create-checkout-session', data),
 }
