@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import Modal from '../components/common/Modal'
 
-const fmt = (n) => `$${Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
+const fmt = (n) => `MXN ${Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
 
 export default function Compras() {
     const { setTitulo, setSubtitulo } = useUI()
@@ -64,7 +64,7 @@ export default function Compras() {
             const [cRes, pRes, prRes] = await Promise.all([
                 comprasAPI.getAll(tab === 'deudas' ? { estado: 'pendiente' } : {}),
                 proveedoresAPI.getAll(),
-                productosAPI.getAll({ limit: 100 })
+                productosAPI.getAll({ limit: 500 })
             ])
             setCompras(cRes.data.compras)
             setProveedores(pRes.data.proveedores)
@@ -307,13 +307,13 @@ export default function Compras() {
                                 <input 
                                     type="text" 
                                     className="input pl-12 h-12 text-base" 
-                                    placeholder="Buscar producto para añadir..."
+                                    placeholder="Buscar producto o insumo para añadir..."
                                     value={buscarProd}
                                     onChange={e => setBuscarProd(e.target.value)}
                                 />
                                 {buscarProd.length > 1 && (
                                     <div className="absolute top-full left-0 right-0 bg-white border border-gray-100 rounded-2xl shadow-2xl mt-2 z-50 max-h-60 overflow-y-auto overflow-x-hidden">
-                                        {productos.filter(p => p.nombre.toLowerCase().includes(buscarProd.toLowerCase())).map(p => (
+                                        {productos.filter(p => p.nombre.toLowerCase().includes(buscarProd.toLowerCase()) || p.codigo.toLowerCase().includes(buscarProd.toLowerCase())).map(p => (
                                             <button key={p.id} onClick={() => addItem(p)} className="w-full p-4 hover:bg-orchid-50 flex items-center justify-between text-left group">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400 group-hover:bg-white group-hover:text-orchid-600 transition-colors">
@@ -321,7 +321,7 @@ export default function Compras() {
                                                     </div>
                                                     <div>
                                                         <p className="text-sm font-bold text-gray-800">{p.nombre}</p>
-                                                        <p className="text-xs text-gray-400">Stock: {p.stock} | Costo Actual: {fmt(p.precio_compra)}</p>
+                                                        <p className="text-xs text-gray-400">{p.tipo_producto === 'insumo' ? 'Insumo' : 'Venta'} · Stock: {p.stock} · Costo actual: {fmt(p.precio_compra)}</p>
                                                     </div>
                                                 </div>
                                                 <Plus size={18} className="text-gray-300 group-hover:text-orchid-600" />
@@ -350,7 +350,7 @@ export default function Compras() {
                                                         <ShoppingCart size={32} />
                                                     </div>
                                                     <p className="text-gray-500 font-bold">Carrito vacío</p>
-                                                    <p className="text-xs text-gray-400">Busca productos para empezar a abastecer tu inventario.</p>
+                                                    <p className="text-xs text-gray-400">Busca productos o insumos para empezar a abastecer tu inventario.</p>
                                                 </td>
                                             </tr>
                                         ) : nuevaCompra.items.map((item, idx) => (
@@ -368,7 +368,7 @@ export default function Compras() {
                                                 </td>
                                                 <td className="py-4 text-right">
                                                     <div className="flex items-center justify-end gap-1">
-                                                        <span className="text-xs text-gray-400">$</span>
+                                                        <span className="text-xs text-gray-400">MXN</span>
                                                         <input 
                                                             type="number" step="0.01" className="w-24 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right font-bold"
                                                             value={item.costo_unitario}

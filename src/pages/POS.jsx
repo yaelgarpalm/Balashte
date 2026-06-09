@@ -13,7 +13,7 @@ import api from '../services/api'
 import CodeScanner from '../components/common/CodeScanner'
 
 
-const fmt = (n) => `$${Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
+const fmt = (n) => `MXN ${Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
 
 export default function POS() {
     const { buscar, setBuscar, setTitulo, setSubtitulo } = useUI()
@@ -140,7 +140,7 @@ export default function POS() {
     useEffect(() => {
         setTitulo('Punto de Venta')
         setSubtitulo('Gestión de ventas y cobro')
-        productosAPI.getAll({ limit: 200 }).then(r => setProductos(r.data.productos))
+        productosAPI.getAll({ limit: 200, tipo_producto: 'venta' }).then(r => setProductos(r.data.productos))
         clientesAPI.getAll().then(r => setClientes(r.data.clientes))
         categoriasAPI.getAll().then(r => setCategorias(r.data.categorias))
         cajaAPI.getEstado().then(r => setCajaAbierta(r.data.abierta))
@@ -412,7 +412,7 @@ export default function POS() {
             setIsApartado(false)
             setFechaLimite('')
             setStripeTransactionId(null)
-            productosAPI.getAll({ limit: 200 }).then(r => setProductos(r.data.productos))
+            productosAPI.getAll({ limit: 200, tipo_producto: 'venta' }).then(r => setProductos(r.data.productos))
         } catch (e) {
             toast.error(e.response?.data?.mensaje || 'Error al procesar')
         } finally { setLoading(false) }

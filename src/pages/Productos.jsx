@@ -12,16 +12,18 @@ import Modal from '../components/common/Modal'
 import CodeScanner from '../components/common/CodeScanner'
 import ProductCodeLabel from '../components/common/ProductCodeLabel'
 
-const emptyProd = { codigo: '', nombre: '', descripcion: '', categoria_id: '', proveedor_id: '', precio_compra: 0, precio_venta: 0, stock: 0, stock_minimo: 5, unidad: 'pieza', imagen_url: '', codigo_sat: '01010101', unidad_sat: 'H87' }
+const emptyProd = { codigo: '', nombre: '', descripcion: '', categoria_id: '', proveedor_id: '', tipo_producto: 'venta', precio_compra: 0, precio_venta: 0, stock: 0, stock_minimo: 5, unidad: 'pieza', imagen_url: '', codigo_sat: '01010101', unidad_sat: 'H87' }
 
 export default function Productos() {
     const { setTitulo, setSubtitulo, buscar } = useUI()
     const { usuario } = useAuth()
     const [productos, setProductos] = useState([])
+    const [insumosDisponibles, setInsumosDisponibles] = useState([])
     const [categorias, setCategorias] = useState([])
     const [proveedores, setProveedores] = useState([])
     const [loading, setLoading] = useState(true)
     const [catFiltro, setCatFiltro] = useState('')
+    const [tipoFiltro, setTipoFiltro] = useState('venta')
     const [modal, setModal] = useState(null) // null | 'crear' | 'editar' | 'stock' | 'movimientos' | 'codigos' | 'scan'
     const [selected, setSelected] = useState(null)
     const [form, setForm] = useState(emptyProd)
@@ -39,11 +41,13 @@ export default function Productos() {
     const load = () => {
         setLoading(true)
         Promise.all([
-            productosAPI.getAll({ buscar, categoria_id: catFiltro, limit: 200 }),
+            productosAPI.getAll({ buscar, categoria_id: catFiltro, tipo_producto: tipoFiltro, limit: 200 }),
+            productosAPI.getAll({ tipo_producto: 'insumo', limit: 500 }),
             categoriasAPI.getAll(),
             proveedoresAPI.getAll(),
-        ]).then(([p, c, pr]) => {
+        ]).then(([p, ins, c, pr]) => {
             setProductos(p.data.productos)
+            setInsumosDisponibles(ins.data.productos || [])
             setCategorias(c.data.categorias)
             setProveedores(pr.data.proveedores)
         }).finally(() => setLoading(false))
@@ -58,10 +62,10 @@ export default function Productos() {
     }, [])
 
     useEffect(() => {
-        setSubtitulo(`${productos.length} productos registrados`)
-    }, [productos])
+        setSubtitulo(`${productos.length} ${tipoFiltro === 'insumo' ? 'insumos' : 'productos de venta'} registrados`)
+    }, [productos, tipoFiltro])
 
-    useEffect(() => { load() }, [buscar, catFiltro])
+    useEffect(() => { load() }, [buscar, catFiltro, tipoFiltro])
 
     const resetCostoProduccion = () => {
         setInsumosProduccion([])
@@ -70,16 +74,17 @@ export default function Productos() {
         setMargenGanancia(60)
     }
 
-    const openCrear = () => { setForm(emptyProd); resetCostoProduccion(); setModal('crear') }
+    const openCrear = () => { setForm({ ...emptyProd, tipo_producto: tipoFiltro }); resetCostoProduccion(); setModal('crear') }
     const openEditar = async (p) => {
         setSelected(p)
         setForm({ ...p, proveedor_id: p.proveedor_id || '' })
         setInsumosProduccion([])
         setCalculoProduccion(null)
-        if (Number(p.precio_compra || 0) > 0 && Number(p.precio_venta || 0) > 0) {
+        if (p.tipo_producto !== 'insumo' && Number(p.precio_compra || 0) > 0 && Number(p.precio_venta || 0) > 0) {
             setMargenGanancia(Math.max(0, ((Number(p.precio_venta) / Number(p.precio_compra)) - 1) * 100).toFixed(1))
         }
         setModal('editar')
+        if (p.tipo_producto === 'insumo') return
         try {
             const { data } = await produccionAPI.getFormulaProducto(p.id)
             if (data.insumos?.length) {
@@ -180,18 +185,22 @@ export default function Productos() {
         setSaving(true)
         try {
             const payload = { ...form }
-            if (insumosProduccion.length) {
+            if (payload.tipo_producto === 'insumo') {
+                payload.precio_venta = 0
+            } else if (insumosProduccion.length) {
                 const costo = calculoProduccion ? Number(calculoProduccion.costo_unitario_produccion || calculoProduccion.costo_total || 0) : await calcularCostoProduccion()
                 payload.precio_compra = costo.toFixed(2)
                 payload.precio_venta = precioVentaConMargen(costo).toFixed(2)
+            } else {
+                return toast.error('Agrega los insumos para calcular el costo y precio de venta')
             }
             if (modal === 'crear') {
                 const { data } = await productosAPI.crear(payload)
-                if (data.id) await guardarFormulaProducto(data.id)
+                if (data.id && payload.tipo_producto !== 'insumo') await guardarFormulaProducto(data.id)
                 toast.success('Producto creado')
             } else {
                 await productosAPI.actualizar(selected.id, payload)
-                await guardarFormulaProducto(selected.id)
+                if (payload.tipo_producto !== 'insumo') await guardarFormulaProducto(selected.id)
                 toast.success('Producto actualizado')
             }
             closeModal(); load()
@@ -293,6 +302,20 @@ export default function Productos() {
 
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                <div className="flex bg-white p-1 rounded-xl border border-gray-100 w-full sm:w-auto">
+                    <button
+                        onClick={() => setTipoFiltro('venta')}
+                        className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-black transition-all ${tipoFiltro === 'venta' ? 'bg-orchid-700 text-white' : 'text-gray-500 hover:bg-orchid-50'}`}
+                    >
+                        Productos venta
+                    </button>
+                    <button
+                        onClick={() => setTipoFiltro('insumo')}
+                        className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-black transition-all ${tipoFiltro === 'insumo' ? 'bg-orchid-700 text-white' : 'text-gray-500 hover:bg-orchid-50'}`}
+                    >
+                        Insumos producción
+                    </button>
+                </div>
                 <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} className="input w-full sm:w-48">
                     <option value="">Todas las categorías</option>
                     {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -307,8 +330,9 @@ export default function Productos() {
                         <tr>
                             <th className="th">Código</th>
                             <th className="th">Producto</th>
+                            <th className="th">Tipo</th>
                             <th className="th">Categoría</th>
-                            <th className="th">Precio venta</th>
+                            <th className="th">{tipoFiltro === 'insumo' ? 'Costo unitario' : 'Precio venta'}</th>
                             <th className="th">Stock</th>
                             <th className="th">Estado</th>
                             <th className="th">Acciones</th>
@@ -316,7 +340,7 @@ export default function Productos() {
                     </thead>
                     <tbody>
                         {loading && [...Array(6)].map((_, i) => (
-                            <tr key={i}><td colSpan={7} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td></tr>
+                            <tr key={i}><td colSpan={8} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td></tr>
                         ))}
                         {!loading && productos.map(p => (
                             <tr key={p.id} className="table-row">
@@ -332,8 +356,13 @@ export default function Productos() {
                                         </div>
                                     </div>
                                 </td>
+                                <td className="td">
+                                    <span className={p.tipo_producto === 'insumo' ? 'badge-yellow' : 'badge-green'}>
+                                        {p.tipo_producto === 'insumo' ? 'Insumo' : 'Venta'}
+                                    </span>
+                                </td>
                                 <td className="td"><span className="badge-purple">{p.categoria}</span></td>
-                                <td className="td font-semibold text-gray-800">{fmt(p.precio_venta)}</td>
+                                <td className="td font-semibold text-gray-800">{fmt(p.tipo_producto === 'insumo' ? p.precio_compra : p.precio_venta)}</td>
                                 <td className="td">
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold text-gray-800">{p.stock}</span>
@@ -357,9 +386,9 @@ export default function Productos() {
                             </tr>
                         ))}
                         {!loading && productos.length === 0 && (
-                            <tr><td colSpan={7} className="text-center py-12 text-gray-400">
+                            <tr><td colSpan={8} className="text-center py-12 text-gray-400">
                                 <Package size={32} className="mx-auto mb-2 opacity-30" />
-                                <p>No se encontraron productos</p>
+                                <p>No se encontraron {tipoFiltro === 'insumo' ? 'insumos' : 'productos de venta'}</p>
                             </td></tr>
                         )}
                     </tbody>
@@ -369,7 +398,7 @@ export default function Productos() {
 
             {/* Modal Crear/Editar */}
             {(modal === 'crear' || modal === 'editar') && (
-                <Modal title={modal === 'crear' ? 'Nuevo producto' : 'Editar producto'} onClose={closeModal} maxWidth="max-w-3xl">
+                <Modal title={modal === 'crear' ? (form.tipo_producto === 'insumo' ? 'Nuevo insumo' : 'Nuevo producto') : (form.tipo_producto === 'insumo' ? 'Editar insumo' : 'Editar producto')} onClose={closeModal} maxWidth="max-w-3xl">
                     <div className="space-y-4">
                         <div className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-3">
                             <div className="w-24 h-24 rounded-2xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden shrink-0">
@@ -410,6 +439,13 @@ export default function Productos() {
                                 <input className="input" value={form.codigo} onChange={e => f('codigo', e.target.value)} disabled={modal === 'editar'} />
                             </div>
                             <div><label className="label">Unidad</label><input className="input" value={form.unidad} onChange={e => f('unidad', e.target.value)} placeholder="pieza" /></div>
+                        </div>
+                        <div>
+                            <label className="label">Tipo *</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => f('tipo_producto', 'venta')} className={`py-2 rounded-xl text-xs font-black border transition-all ${form.tipo_producto !== 'insumo' ? 'bg-orchid-700 text-white border-orchid-700' : 'bg-white text-gray-500 border-gray-200'}`}>Producto para venta</button>
+                                <button onClick={() => f('tipo_producto', 'insumo')} className={`py-2 rounded-xl text-xs font-black border transition-all ${form.tipo_producto === 'insumo' ? 'bg-orchid-700 text-white border-orchid-700' : 'bg-white text-gray-500 border-gray-200'}`}>Insumo de producción</button>
+                            </div>
                         </div>
                         <div><label className="label">Nombre *</label><input className="input" value={form.nombre} onChange={e => f('nombre', e.target.value)} /></div>
                         <div><label className="label">Descripción</label><textarea className="input resize-none" rows={2} value={form.descripcion || ''} onChange={e => f('descripcion', e.target.value)} /></div>
@@ -452,8 +488,11 @@ export default function Productos() {
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div><label className="label">Stock mínimo</label><input type="number" className="input" value={form.stock_minimo} onChange={e => f('stock_minimo', e.target.value)} /></div>
+                            {form.tipo_producto === 'insumo' && (
+                                <div><label className="label">Costo unitario (MXN)</label><input type="number" min="0" step="0.01" className="input" value={form.precio_compra} onChange={e => f('precio_compra', e.target.value)} /></div>
+                            )}
                         </div>
-                        <div className="rounded-2xl border border-orchid-100 bg-orchid-50/40 p-4 space-y-3">
+                        {form.tipo_producto !== 'insumo' && <div className="rounded-2xl border border-orchid-100 bg-orchid-50/40 p-4 space-y-3">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <div>
                                     <p className="text-sm font-black text-gray-800 flex items-center gap-2"><Factory size={16} className="text-orchid-700" /> Costo automatizado de producción</p>
@@ -467,7 +506,7 @@ export default function Productos() {
                                     <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_38px] gap-2">
                                         <select className="input" value={item.producto_id} onChange={e => updateInsumoProduccion(idx, 'producto_id', e.target.value)}>
                                             <option value="">Seleccionar insumo</option>
-                                            {productos.filter(p => Number(p.id) !== Number(selected?.id || 0)).map(p => (
+                                            {insumosDisponibles.filter(p => Number(p.id) !== Number(selected?.id || 0)).map(p => (
                                                 <option key={p.id} value={p.id}>{p.codigo} · {p.nombre} · {fmt(p.precio_compra)}</option>
                                             ))}
                                         </select>
@@ -509,7 +548,7 @@ export default function Productos() {
                                     Calcular y aplicar costo
                                 </button>
                             </div>
-                        </div>
+                        </div>}
                         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-50">
                             <div><label className="label">Código SAT (8 dígitos)</label><input className="input" placeholder="01010101" value={form.codigo_sat || ''} onChange={e => f('codigo_sat', e.target.value)} /></div>
                             <div><label className="label">Unidad SAT</label><input className="input" placeholder="H87" value={form.unidad_sat || ''} onChange={e => f('unidad_sat', e.target.value)} /></div>
@@ -519,7 +558,7 @@ export default function Productos() {
                             <div><label className="label">Stock inicial</label><input type="number" className="input" value={form.stock} onChange={e => f('stock', e.target.value)} /></div>
                         )}
                         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
-                            <ProductCodeLabel code={form.codigo} name={form.nombre} price={form.precio_venta} />
+                            <ProductCodeLabel code={form.codigo} name={form.nombre} price={form.tipo_producto === 'insumo' ? form.precio_compra : form.precio_venta} />
                         </div>
                         <div className="flex gap-3 pt-2">
                             <button onClick={closeModal} className="btn-secondary flex-1 justify-center">Cancelar</button>

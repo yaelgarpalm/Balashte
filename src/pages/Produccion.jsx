@@ -18,6 +18,7 @@ const emptyForm = {
 export default function Produccion() {
     const { setTitulo, setSubtitulo, buscar } = useUI()
     const [productos, setProductos] = useState([])
+    const [insumosDisponibles, setInsumosDisponibles] = useState([])
     const [formulas, setFormulas] = useState([])
     const [lotes, setLotes] = useState([])
     const [form, setForm] = useState(emptyForm)
@@ -35,12 +36,14 @@ export default function Produccion() {
     const load = async () => {
         setLoading(true)
         try {
-            const [pRes, fRes, lRes] = await Promise.all([
-                productosAPI.getAll({ limit: 500, activo: 'true' }),
+            const [pRes, insRes, fRes, lRes] = await Promise.all([
+                productosAPI.getAll({ limit: 500, activo: 'true', tipo_producto: 'venta' }),
+                productosAPI.getAll({ limit: 500, activo: 'true', tipo_producto: 'insumo' }),
                 produccionAPI.getFormulas({ buscar }),
                 produccionAPI.getLotes({ buscar, limit: 40 }),
             ])
             setProductos(pRes.data.productos || [])
+            setInsumosDisponibles(insRes.data.productos || [])
             setFormulas(fRes.data.formulas || [])
             setLotes(lRes.data.lotes || [])
         } catch (error) {
@@ -211,7 +214,7 @@ export default function Produccion() {
                                 <div key={idx} className="grid grid-cols-[1fr_110px_36px] gap-2">
                                     <select className="input" value={item.producto_id} onChange={e => updateInsumo(idx, 'producto_id', e.target.value)}>
                                         <option value="">Seleccionar insumo</option>
-                                        {productos.filter(p => Number(p.id) !== Number(form.producto_id)).map(p => (
+                                        {insumosDisponibles.map(p => (
                                             <option key={p.id} value={p.id}>{p.codigo} · {p.nombre} · {fmt(p.precio_compra)}</option>
                                         ))}
                                     </select>
@@ -223,7 +226,7 @@ export default function Produccion() {
                             ))}
                             {form.insumos.length === 0 && (
                                 <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-sm text-gray-400">
-                                    Agrega tutor, maceta, abrillantador, celofán u otros insumos.
+                                    Agrega maceta, abrillantador, celofán u otros insumos.
                                 </div>
                             )}
                         </div>
