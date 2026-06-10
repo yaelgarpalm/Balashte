@@ -339,9 +339,39 @@ export default function Productos() {
         toast.success('Código capturado')
     }
 
+    const handleScanStockDetectado = async (codigo) => {
+        setModal(null)
+        try {
+            const { data } = await productosAPI.getAll({ buscar: codigo.trim() })
+            const allFound = data.productos || []
+            const exactProduct = allFound.find(p => p.codigo?.toLowerCase() === codigo.trim().toLowerCase())
+            
+            if (exactProduct) {
+                setSelected(exactProduct)
+                setAjuste({ tipo: 'entrada', cantidad: 0, motivo: 'Entrada por escaneo' })
+                setModal('stock')
+                toast.success(`Producto encontrado: ${exactProduct.nombre}`)
+            } else {
+                toast.error(`Producto con código "${codigo}" no registrado`)
+                if (window.confirm(`El producto con código "${codigo}" no existe. ¿Deseas crearlo ahora?`)) {
+                    setForm({ ...emptyProd, codigo: codigo.trim(), tipo_producto: tipoFiltro })
+                    resetCostoProduccion()
+                    setModal('crear')
+                }
+            }
+        } catch (error) {
+            console.error(error)
+            toast.error('Error al buscar el producto')
+        }
+    }
+
     return (
         <div>
-            <div className="flex items-center justify-end mb-6">
+            <div className="flex items-center justify-end gap-2 mb-6">
+                <button onClick={() => setModal('scan_stock')} className="btn-secondary">
+                    <ScanLine size={16} className="text-orchid-600" />
+                    Escanear para stock
+                </button>
                 <button onClick={openCrear} className="btn-primary"><Plus size={16} />Nuevo producto</button>
             </div>
 
@@ -688,6 +718,14 @@ export default function Productos() {
                     title="Escanear código de producto"
                     onClose={() => setModal(selected ? 'editar' : 'crear')}
                     onDetected={handleCodigoDetectado}
+                />
+            )}
+
+            {modal === 'scan_stock' && (
+                <CodeScanner
+                    title="Escanear código para ajustar stock"
+                    onClose={() => setModal(null)}
+                    onDetected={handleScanStockDetectado}
                 />
             )}
         </div>
