@@ -281,11 +281,56 @@ export default function Productos() {
         if (costo > 0) f('precio_venta', precioVentaConMargen(costo, margen).toFixed(2))
     }
 
-    const generarCodigo = () => {
-        const prefix = 'BAL'
-        const timestamp = Date.now().toString().slice(-8)
-        const random = Math.floor(Math.random() * 90 + 10)
-        f('codigo', `${prefix}${timestamp}${random}`)
+    const generarCodigo = async () => {
+        if (!form.categoria_id) {
+            return toast.error('Selecciona una categoría primero')
+        }
+
+        const isInsumo = form.tipo_producto === 'insumo'
+        const typePrefix = isInsumo ? 'INS' : 'PROD'
+
+        const cat = categorias.find(c => Number(c.id) === Number(form.categoria_id))
+        if (!cat) return toast.error('Categoría no encontrada')
+
+        const cleanCatName = cat.nombre
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, "")
+            .trim()
+        const catPrefix = cleanCatName.slice(0, 3).padEnd(3, 'X')
+
+        const prefix = `${typePrefix}-${catPrefix}-`
+
+        try {
+            const { data } = await productosAPI.getAll({ limit: 1000 })
+            const allProducts = data.productos || []
+            
+            const matchingCodes = allProducts
+                .map(p => p.codigo || '')
+                .filter(code => code.startsWith(prefix))
+            
+            let nextNum = 1
+            if (matchingCodes.length > 0) {
+                const numbers = matchingCodes.map(code => {
+                    const parts = code.split('-')
+                    const numStr = parts[parts.length - 1]
+                    const num = parseInt(numStr, 10)
+                    return isNaN(num) ? 0 : num
+                })
+                const maxNum = Math.max(...numbers, 0)
+                nextNum = maxNum + 1
+            }
+
+            const nextNumStr = String(nextNum).padStart(3, '0')
+            f('codigo', `${prefix}${nextNumStr}`)
+            toast.success('Código generado')
+        } catch (error) {
+            console.error(error)
+            const timestamp = Date.now().toString().slice(-4)
+            f('codigo', `${prefix}${timestamp}`)
+            toast.error('Error al consultar códigos, se generó un código temporal')
+        }
     }
 
     const handleCodigoDetectado = (codigo) => {

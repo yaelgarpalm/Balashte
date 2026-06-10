@@ -19,7 +19,8 @@
         "react-router-dom": "^6.23.1",
         "react-to-print": "^3.3.0",
         "recharts": "^2.12.7",
-        "stripe": "^22.1.1"
+        "stripe": "^22.1.1",
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@vitejs/plugin-react": "^4.3.0",
