@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { reportesAPI, configuracionAPI } from '../services/api'
 import toast from 'react-hot-toast'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 import { Search, FileText, Users, Award, TrendingUp, DollarSign, Percent, Star, Crown, ShoppingBag } from 'lucide-react'
 import { useUI } from '../context/UIContext'
 
@@ -298,59 +298,463 @@ export default function Reportes() {
     }
 
     const exportPDF = async () => {
-        const element = document.getElementById('reporte-content');
-        if (!element) return;
-        
-        const tid = toast.loading('Generando documento PDF profesional...');
-        
+        if (!data) return toast.error('Genera el reporte primero')
+        const tid = toast.loading('Generando PDF profesional...')
         try {
-            const html2canvas = (await import('html2canvas')).default;
-            const { jsPDF } = await import('jspdf');
-            
-            const isKPI = tab === 'kpi';
-            document.body.classList.add('report-export-page');
-            element.classList.add('report-export-mode');
-            await new Promise(r => setTimeout(r, 500));
+            const { jsPDF } = await import('jspdf')
+            const pdf = new jsPDF('p', 'mm', 'a4')
+            const PW = pdf.internal.pageSize.getWidth()   // 210
+            const PH = pdf.internal.pageSize.getHeight()  // 297
+            const ML = 14, MR = 14, MT = 14
+            const CW = PW - ML - MR
+            let Y = MT
 
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: '#ffffff',
-                width: isKPI ? 1120 : element.scrollWidth,
-                height: isKPI ? 640 : element.scrollHeight,
-                windowWidth: isKPI ? 1120 : Math.max(1280, element.scrollWidth),
-                windowHeight: isKPI ? 640 : element.scrollHeight,
-            });
-            
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF(isKPI ? 'l' : 'p', 'mm', 'a4');
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const margin = 8;
-            const imgWidth = pageWidth - margin * 2;
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
-            const printableHeight = pageHeight - margin * 2;
-            
-            let remainingHeight = imgHeight;
-            let position = margin;
-            pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-            remainingHeight -= printableHeight;
+            const ORCHID = [164, 85, 247]
+            const SLATE  = [51,  65,  85]
+            const GRAY   = [148, 163, 184]
+            const WHITE  = [255, 255, 255]
+            const GREEN  = [16,  185, 129]
+            const RED    = [239, 68,  68]
+            const BLUE   = [59,  130, 246]
 
-            while (remainingHeight > 0 && !isKPI) {
-                pdf.addPage();
-                position = margin - (imgHeight - remainingHeight);
-                pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-                remainingHeight -= printableHeight;
+            const checkPage = (needed = 10) => {
+                if (Y + needed > PH - 14) { pdf.addPage(); Y = MT }
             }
 
-            pdf.save(`reporte_${tab}_${filtros.fecha_inicio}.pdf`);
-            toast.success('PDF exportado correctamente', { id: tid });
+            // ─── Header brand bar ──────────────────────────────────────────
+            pdf.setFillColor(...ORCHID)
+            pdf.rect(0, 0, PW, 22, 'F')
+            pdf.setTextColor(...WHITE)
+            pdf.setFont('helvetica', 'bold')
+            pdf.setFontSize(13)
+            pdf.text(config?.ticket_nombre_negocio || 'BALASHTE ORQUÍDEAS Y ANTURIOS', ML, 10)
+            pdf.setFontSize(7)
+            pdf.setFont('helvetica', 'normal')
+            pdf.text(`REPORTE EJECUTIVO · ${tab.toUpperCase()}`, ML, 16)
+            pdf.setFontSize(8)
+            const periodoTxt = `${filtros.fecha_inicio}  →  ${filtros.fecha_fin}`
+            pdf.text(periodoTxt, PW - MR - pdf.getTextWidth(periodoTxt), 10)
+            pdf.setFontSize(7)
+            const genTxt = `Generado: ${new Date().toLocaleString('es-MX')}`
+            pdf.text(genTxt, PW - MR - pdf.getTextWidth(genTxt), 16)
+            Y = 28
+
+            // ─── KPI summary boxes ─────────────────────────────────────────
+            const totales = data.totales || {}
+            const ingresos = num(totales.subtotal)
+            const costo    = num(totales.costo_total)
+            const utilidad = ingresos - costo
+            const margen   = ingresos > 0 ? (utilidad / ingresos * 100) : 0
+            const iva      = num(totales.iva)
+            const totalVentas = num(totales.total_ventas)
+
+            const boxes = [
+                { label: 'Total Ventas',    value: totalVentas.toLocaleString(),  color: ORCHID },
+                { label: 'Ingresos Brutos', value: fmt(ingresos),                 color: BLUE   },
+                { label: 'Costo de Ventas', value: fmt(costo),                    color: RED    },
+                { label: 'Utilidad Bruta',  value: fmt(utilidad),                 color: GREEN  },
+                { label: 'IVA Generado',    value: fmt(iva),                      color: [245, 158, 11] },
+                { label: 'Margen %',        value: `${margen.toFixed(1)}%`,       color: [99,  102, 241] },
+            ]
+            const bW = (CW - 5 * 3) / 6
+            boxes.forEach((b, i) => {
+                const bx = ML + i * (bW + 3)
+                pdf.setFillColor(b.color[0], b.color[1], b.color[2], 15)
+                pdf.setFillColor(245, 247, 250)
+                pdf.roundedRect(bx, Y, bW, 18, 2, 2, 'F')
+                pdf.setDrawColor(b.color[0], b.color[1], b.color[2])
+                pdf.setLineWidth(0.5)
+                pdf.roundedRect(bx, Y, bW, 18, 2, 2, 'S')
+                // accent top line
+                pdf.setFillColor(...b.color)
+                pdf.rect(bx, Y, bW, 1.5, 'F')
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(9)
+                pdf.setTextColor(...b.color)
+                const vw = pdf.getTextWidth(b.value)
+                pdf.text(b.value, bx + bW / 2 - vw / 2, Y + 10)
+                pdf.setFont('helvetica', 'normal')
+                pdf.setFontSize(6)
+                pdf.setTextColor(...GRAY)
+                const lw = pdf.getTextWidth(b.label)
+                pdf.text(b.label, bx + bW / 2 - lw / 2, Y + 15.5)
+            })
+            Y += 24
+
+            // ─── Helper: draw a table ─────────────────────────────────────
+            const drawTable = (headers, rows, colWidths, opts = {}) => {
+                const { rowH = 7, headerBg = ORCHID, fontSize = 7 } = opts
+                checkPage(rowH * 2 + 4)
+
+                // header
+                let cx = ML
+                pdf.setFillColor(...headerBg)
+                pdf.rect(ML, Y, CW, rowH, 'F')
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(fontSize)
+                pdf.setTextColor(...WHITE)
+                headers.forEach((h, i) => {
+                    pdf.text(String(h), cx + 1.5, Y + rowH - 2)
+                    cx += colWidths[i]
+                })
+                Y += rowH
+
+                // rows
+                rows.forEach((row, ri) => {
+                    checkPage(rowH + 2)
+                    pdf.setFillColor(ri % 2 === 0 ? 249 : 255, ri % 2 === 0 ? 250 : 255, ri % 2 === 0 ? 252 : 255)
+                    pdf.rect(ML, Y, CW, rowH, 'F')
+                    pdf.setDrawColor(226, 232, 240)
+                    pdf.setLineWidth(0.2)
+                    pdf.line(ML, Y + rowH, ML + CW, Y + rowH)
+
+                    cx = ML
+                    pdf.setFont('helvetica', 'normal')
+                    pdf.setTextColor(...SLATE)
+                    row.forEach((cell, i) => {
+                        const txt = String(cell ?? '')
+                        const maxW = colWidths[i] - 3
+                        const truncated = pdf.getTextWidth(txt) > maxW
+                            ? txt.slice(0, Math.floor(maxW / pdf.getTextWidth('a') * txt.length) - 1) + '…'
+                            : txt
+                        pdf.text(truncated, cx + 1.5, Y + rowH - 2)
+                        cx += colWidths[i]
+                    })
+                    Y += rowH
+                })
+                Y += 4
+            }
+
+            // ─── Section title helper ──────────────────────────────────────
+            const sectionTitle = (title) => {
+                checkPage(12)
+                pdf.setFillColor(241, 245, 249)
+                pdf.rect(ML, Y, CW, 8, 'F')
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(8)
+                pdf.setTextColor(...SLATE)
+                pdf.text(title, ML + 2, Y + 5.5)
+                Y += 11
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // TAB: GENERAL
+            // ═══════════════════════════════════════════════════════════════
+            if (tab === 'general') {
+                // Detalle por Día
+                sectionTitle('DETALLE POR DÍA')
+                const diaHeaders = ['Fecha', 'Ventas', 'Subtotal', 'IVA', 'Total', 'Costo', 'Utilidad']
+                const diaWidths  = [28, 16, 30, 24, 30, 26, 28]
+                const diaRows = (data.por_dia || []).map(d => [
+                    dateOnly(d.fecha),
+                    d.ventas,
+                    fmt(d.subtotal),
+                    fmt(d.iva),
+                    fmt(d.total),
+                    fmt(d.costo),
+                    fmt(num(d.subtotal) - num(d.costo)),
+                ])
+                drawTable(diaHeaders, diaRows, diaWidths)
+
+                // Métodos de pago
+                sectionTitle('VENTAS POR MÉTODO DE PAGO')
+                const metTot = (data.por_metodo || []).reduce((s, m) => s + num(m.total), 0)
+                const metHeaders = ['Método', 'Transacciones', 'Total', 'Participación']
+                const metWidths  = [50, 40, 40, 52]
+                const metRows = (data.por_metodo || []).map(m => [
+                    m.metodo_pago,
+                    m.ventas,
+                    fmt(m.total),
+                    pct(m.total, metTot),
+                ])
+                drawTable(metHeaders, metRows, metWidths)
+
+                // Ventas por Categoría
+                sectionTitle('VENTAS POR CATEGORÍA')
+                const catHeaders = ['Categoría', 'Cantidad', 'Total', 'Costo', 'Utilidad', 'Margen']
+                const catWidths  = [45, 22, 30, 28, 28, 29]
+                const catRows = (data.por_categoria || []).map(c => [
+                    c.categoria,
+                    c.cantidad,
+                    fmt(c.total),
+                    fmt(c.costo),
+                    fmt(c.utilidad),
+                    pct(c.utilidad, num(c.total)),
+                ])
+                drawTable(catHeaders, catRows, catWidths)
+
+                // Top Productos
+                sectionTitle('TOP PRODUCTOS')
+                const prodHeaders = ['Producto', 'Categoría', 'Cant.', 'Total', 'Costo', 'Utilidad', 'Margen']
+                const prodWidths  = [44, 32, 14, 26, 22, 26, 18]
+                const prodRows = (data.top_productos || []).slice(0, 20).map(p => [
+                    p.nombre,
+                    p.categoria || '',
+                    p.cantidad,
+                    fmt(p.total),
+                    fmt(p.costo),
+                    fmt(p.utilidad),
+                    pct(p.utilidad, num(p.total)),
+                ])
+                drawTable(prodHeaders, prodRows, prodWidths)
+
+                // Detalle de Ventas — landscape page for more space
+                pdf.addPage('a4', 'landscape')
+                Y = MT
+
+                // Re-draw header bar on new landscape page
+                const PWL = pdf.internal.pageSize.getWidth()   // 297 in landscape
+                const CWL = PWL - ML - MR
+                pdf.setFillColor(...ORCHID)
+                pdf.rect(0, 0, PWL, 16, 'F')
+                pdf.setTextColor(...WHITE)
+                pdf.setFont('helvetica', 'bold')
+                pdf.setFontSize(10)
+                pdf.text('DETALLE DE VENTAS', ML, 10.5)
+                pdf.setFontSize(7)
+                pdf.setFont('helvetica', 'normal')
+                pdf.text(`Período: ${filtros.fecha_inicio}  →  ${filtros.fecha_fin}`, PWL - MR - pdf.getTextWidth(`Período: ${filtros.fecha_inicio}  →  ${filtros.fecha_fin}`), 10.5)
+                Y = 22
+
+                const shortFolio = (folio) => folio ? folio.replace('VTA-', '').replace(/^0+/, '') : ''
+                const shortDate = (val) => val ? new Date(val).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
+
+                const dvHeaders = ['Folio', 'Fecha', 'Cliente', 'Vendedor', 'Método', 'Art.', 'Subtotal', 'IVA', 'Total', 'Utilidad']
+                // CWL ≈ 269mm — distribute proportionally
+                const dvWidths  = [28, 30, 48, 38, 22, 10, 26, 22, 26, 19]
+                const dvRows = (data.detalle_ventas || []).map(v => [
+                    shortFolio(v.folio),
+                    shortDate(v.created_at),
+                    v.cliente,
+                    v.vendedor,
+                    v.metodo_pago,
+                    v.articulos,
+                    fmt(v.subtotal),
+                    fmt(v.iva),
+                    fmt(v.total),
+                    fmt(v.utilidad),
+                ])
+
+                // Landscape-aware drawTable
+                const checkPageL = (needed = 10) => {
+                    if (Y + needed > pdf.internal.pageSize.getHeight() - 14) {
+                        pdf.addPage('a4', 'landscape')
+                        Y = MT
+                    }
+                }
+                const drawTableL = (headers, rows, colWidths, opts = {}) => {
+                    const { rowH = 7, headerBg = ORCHID, fontSize = 7 } = opts
+                    checkPageL(rowH * 2 + 4)
+                    let cx = ML
+                    pdf.setFillColor(...headerBg)
+                    pdf.rect(ML, Y, CWL, rowH, 'F')
+                    pdf.setFont('helvetica', 'bold')
+                    pdf.setFontSize(fontSize)
+                    pdf.setTextColor(...WHITE)
+                    headers.forEach((h, i) => {
+                        pdf.text(String(h), cx + 1.5, Y + rowH - 2)
+                        cx += colWidths[i]
+                    })
+                    Y += rowH
+                    rows.forEach((row, ri) => {
+                        checkPageL(rowH + 2)
+                        pdf.setFillColor(ri % 2 === 0 ? 249 : 255, ri % 2 === 0 ? 250 : 255, ri % 2 === 0 ? 252 : 255)
+                        pdf.rect(ML, Y, CWL, rowH, 'F')
+                        pdf.setDrawColor(226, 232, 240)
+                        pdf.setLineWidth(0.2)
+                        pdf.line(ML, Y + rowH, ML + CWL, Y + rowH)
+                        cx = ML
+                        pdf.setFont('helvetica', 'normal')
+                        pdf.setTextColor(...SLATE)
+                        row.forEach((cell, i) => {
+                            const txt = String(cell ?? '')
+                            const maxW = colWidths[i] - 3
+                            const truncated = pdf.getTextWidth(txt) > maxW
+                                ? txt.slice(0, Math.floor(maxW / pdf.getTextWidth('a') * txt.length) - 1) + '…'
+                                : txt
+                            pdf.text(truncated, cx + 1.5, Y + rowH - 2)
+                            cx += colWidths[i]
+                        })
+                        Y += rowH
+                    })
+                    Y += 4
+                }
+                drawTableL(dvHeaders, dvRows, dvWidths, { rowH: 6.5 })
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // TAB: KPI
+            // ═══════════════════════════════════════════════════════════════
+            if (tab === 'kpi') {
+                const ticketProm = totalVentas > 0 ? num(totales.total) / totalVentas : 0
+                const descuentos = num(totales.descuentos)
+                const totalArticulos = (data.top_productos || []).reduce((s, p) => s + num(p.cantidad), 0)
+                const dias = (data.por_dia || []).length || 1
+                const promDiario = num(totales.total) / dias
+                const clientesUnicos = clientData?.length || 0
+                const topVendedor = (userData || []).length > 0
+                    ? (userData || []).reduce((a, b) => num(b.ingresos_totales) > num(a.ingresos_totales) ? b : a)
+                    : null
+                const topCliente = (clientData || []).length > 0
+                    ? (clientData || []).reduce((a, b) => num(b.total_gastado) > num(a.total_gastado) ? b : a)
+                    : null
+
+                // KPI Extended table
+                sectionTitle('INDICADORES CLAVE DE RENDIMIENTO (KPI)')
+                const kpiRows = [
+                    ['Ticket Promedio',             fmt(ticketProm)],
+                    ['Artículos Vendidos',          totalArticulos.toLocaleString()],
+                    ['Clientes Atendidos',          clientesUnicos.toLocaleString()],
+                    ['Promedio de Ingreso Diario',  fmt(promDiario)],
+                    ['Descuentos Otorgados',        fmt(descuentos)],
+                    ['% Descuentos / Subtotal',     ingresos > 0 ? `${(descuentos/ingresos*100).toFixed(1)}%` : '0.0%'],
+                    ['% Costo / Ingresos',          ingresos > 0 ? `${(costo/ingresos*100).toFixed(1)}%` : '0.0%'],
+                    ['Ingreso por Cliente',         fmt(ingresos / (clientesUnicos || 1))],
+                    ['Costo por Transacción',       fmt(costo / (totalVentas || 1))],
+                    ['Utilidad por Transacción',    fmt(utilidad / (totalVentas || 1))],
+                ]
+                drawTable(['Indicador', 'Valor'], kpiRows, [130, 52], { headerBg: [99, 102, 241] })
+
+                // Tendencia por día
+                sectionTitle('TENDENCIA DIARIA DE VENTAS')
+                const tendHeaders = ['Fecha', 'Transacciones', 'Subtotal', 'IVA', 'Total', 'Costo', 'Utilidad']
+                const tendWidths  = [28, 22, 28, 22, 28, 24, 30]
+                const tendRows = (data.por_dia || []).map(d => [
+                    dateOnly(d.fecha),
+                    d.ventas,
+                    fmt(d.subtotal),
+                    fmt(d.iva),
+                    fmt(d.total),
+                    fmt(d.costo),
+                    fmt(num(d.subtotal) - num(d.costo)),
+                ])
+                drawTable(tendHeaders, tendRows, tendWidths)
+
+                // Top vendedor / cliente
+                if (topVendedor || topCliente) {
+                    sectionTitle('DESTACADOS DEL PERÍODO')
+                    const destRows = []
+                    if (topVendedor) destRows.push(['⭐ Top Vendedor', topVendedor.nombre, `${topVendedor.total_ventas} ventas · ${fmt(topVendedor.ingresos_totales)}`])
+                    if (topCliente)  destRows.push(['👑 Top Cliente',  topCliente.nombre,  `${topCliente.total_compras} compras · ${fmt(topCliente.total_gastado)}`])
+                    drawTable(['Categoría', 'Nombre', 'Detalle'], destRows, [40, 60, 82], { headerBg: GREEN })
+                }
+
+                // Métodos de pago
+                sectionTitle('DISTRIBUCIÓN POR MÉTODO DE PAGO')
+                const metTotKpi = (data.por_metodo || []).reduce((s, m) => s + num(m.total), 0)
+                drawTable(
+                    ['Método de Pago', 'Transacciones', 'Total', 'Participación'],
+                    (data.por_metodo || []).map(m => [m.metodo_pago, m.ventas, fmt(m.total), pct(m.total, metTotKpi)]),
+                    [50, 40, 40, 52],
+                    { headerBg: [16, 192, 184] }
+                )
+
+                // Top productos
+                sectionTitle('TOP 10 PRODUCTOS MÁS VENDIDOS')
+                drawTable(
+                    ['#', 'Producto', 'Categoría', 'Unidades', 'Total', 'Utilidad'],
+                    (data.top_productos || []).slice(0, 10).map((p, i) => [i + 1, p.nombre, p.categoria || '', p.cantidad, fmt(p.total), fmt(p.utilidad)]),
+                    [10, 60, 38, 18, 30, 26],
+                    { headerBg: ORCHID }
+                )
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // TAB: USUARIOS
+            // ═══════════════════════════════════════════════════════════════
+            if (tab === 'usuarios') {
+                sectionTitle('DESEMPEÑO DE VENDEDORES')
+                const totalStaff = (userData || []).reduce((s, u) => s + num(u.ingresos_totales), 0)
+                drawTable(
+                    ['Usuario', 'Rol', 'Ventas', 'Total Ventas', 'Ticket Prom.', 'Participación', `Comisión ${comision}%`],
+                    (userData || []).map(u => [
+                        u.nombre, u.rol, u.total_ventas,
+                        fmt(u.ingresos_totales),
+                        fmt(u.ticket_promedio || num(u.ingresos_totales) / (num(u.total_ventas) || 1)),
+                        pct(u.ingresos_totales, totalStaff),
+                        fmt(num(u.ingresos_totales) * (comision / 100))
+                    ]),
+                    [40, 24, 16, 28, 24, 26, 24],
+                    { headerBg: ORCHID }
+                )
+
+                // Resumen staff
+                checkPage(30)
+                sectionTitle('RESUMEN DEL EQUIPO')
+                drawTable(
+                    ['Métrica', 'Valor'],
+                    [
+                        ['Total vendedores', (userData || []).length],
+                        ['Total transacciones', (userData || []).reduce((s, u) => s + num(u.total_ventas), 0)],
+                        ['Total ingresos asignados', fmt(totalStaff)],
+                        ['Promedio de ventas por vendedor', fmt(totalStaff / ((userData || []).length || 1))],
+                        [`Fondo de comisiones (${comision}%)`, fmt(totalStaff * (comision / 100))],
+                    ],
+                    [100, 82],
+                    { headerBg: [99, 102, 241] }
+                )
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // TAB: CLIENTES
+            // ═══════════════════════════════════════════════════════════════
+            if (tab === 'clientes') {
+                sectionTitle('FIDELIZACIÓN DE CLIENTES')
+                const totalGastadoAll = (clientData || []).reduce((s, c) => s + num(c.total_gastado), 0)
+                drawTable(
+                    ['Cliente', 'Status', 'Compras', 'Total Gastado', 'Ticket Prom.', 'Puntos', 'Participación'],
+                    (clientData || []).map(c => {
+                        const st = getStatus(c.total_gastado)
+                        return [
+                            c.nombre, st.label, c.total_compras,
+                            fmt(c.total_gastado),
+                            fmt(num(c.total_compras) > 0 ? num(c.total_gastado) / num(c.total_compras) : 0),
+                            Math.floor(num(c.total_gastado) / 10),
+                            pct(c.total_gastado, totalGastadoAll)
+                        ]
+                    }),
+                    [44, 20, 16, 28, 22, 14, 38],
+                    { headerBg: BLUE, rowH: 6.5 }
+                )
+
+                checkPage(30)
+                sectionTitle('RESUMEN PROGRAMA DE LEALTAD')
+                drawTable(
+                    ['Métrica', 'Valor'],
+                    [
+                        ['Clientes con historial', (clientData || []).filter(c => num(c.total_compras) > 0).length],
+                        ['Clientes Bronze',  (clientData || []).filter(c => num(c.total_gastado) < 1000).length],
+                        ['Clientes Silver',  (clientData || []).filter(c => num(c.total_gastado) >= 1000 && num(c.total_gastado) < 2000).length],
+                        ['Clientes Gold',    (clientData || []).filter(c => num(c.total_gastado) >= 2000 && num(c.total_gastado) < 5000).length],
+                        ['Clientes Platinum',(clientData || []).filter(c => num(c.total_gastado) >= 5000).length],
+                        ['Total puntos generados', Math.floor(totalGastadoAll / 10)],
+                        ['Total gastado acumulado', fmt(totalGastadoAll)],
+                    ],
+                    [100, 82],
+                    { headerBg: BLUE }
+                )
+            }
+
+            // ─── Footer on each page ──────────────────────────────────────
+            const totalPages = pdf.internal.getNumberOfPages()
+            for (let i = 1; i <= totalPages; i++) {
+                pdf.setPage(i)
+                const pgW = pdf.internal.pageSize.getWidth()
+                const pgH = pdf.internal.pageSize.getHeight()
+                pdf.setFillColor(241, 245, 249)
+                pdf.rect(0, pgH - 10, pgW, 10, 'F')
+                pdf.setFont('helvetica', 'normal')
+                pdf.setFontSize(6)
+                pdf.setTextColor(...GRAY)
+                pdf.text(`${config?.ticket_nombre_negocio || 'Balashte'} · Reporte ${tab} · ${filtros.fecha_inicio} al ${filtros.fecha_fin}`, ML, pgH - 4)
+                pdf.text(`Pág. ${i} / ${totalPages}`, pgW - MR - 14, pgH - 4)
+            }
+
+            pdf.save(`reporte_${tab}_${filtros.fecha_inicio}.pdf`)
+            toast.success('PDF exportado correctamente', { id: tid })
         } catch (e) {
-            console.error(e);
-            toast.error('Error al generar PDF', { id: tid });
-        } finally {
-            element.classList.remove('report-export-mode');
-            document.body.classList.remove('report-export-page');
+            console.error(e)
+            toast.error('Error al generar PDF: ' + e.message, { id: tid })
         }
     }
 
@@ -705,172 +1109,424 @@ export default function Reportes() {
             {data && tab === 'kpi' && (
                 <div className="space-y-6 bg-slate-50/50 p-6 rounded-3xl border border-gray-100/80 shadow-inner">
                     <h2 className="text-3xl font-extrabold text-center text-slate-800 tracking-tight mb-6 mt-2">KPI Dashboard</h2>
-                    
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Left Col: 3 Cards */}
-                        <div className="space-y-4 flex flex-col justify-between">
-                            {/* Card 1: Ad Impressions */}
-                            <div className="bg-white rounded-[24px] border border-gray-100/90 p-5 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between h-[115px]">
-                                <div className="space-y-1">
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ad Impressions</p>
-                                    <p className="text-3xl font-black text-[#10c0b8] font-display">
-                                        {((data.totales?.total_ventas || 0) * 1285 + 35567).toLocaleString()}
-                                    </p>
-                                </div>
-                                <div className="w-[110px] h-[55px] flex items-end justify-between px-1 shrink-0">
-                                    {[30, 48, 90, 72, 45, 20].map((h, i) => (
-                                        <div key={i} className="w-[10px] rounded-[3px] transition-all hover:opacity-80" style={{ height: `${h}%`, backgroundColor: i === 2 ? '#ff9655' : i === 3 ? '#10c0b8' : '#3ee2d8' }} />
-                                    ))}
-                                </div>
-                            </div>
+                    {(() => {
+                        const totales = data.totales || {}
+                        const totalVentas = num(totales.total_ventas)
+                        const subtotal = num(totales.subtotal)
+                        const costo = num(totales.costo_total)
+                        const iva = num(totales.iva)
+                        const descuentos = num(totales.descuentos)
+                        const utilidad = subtotal - costo
+                        const margen = subtotal > 0 ? (utilidad / subtotal * 100) : 0
+                        const ticketProm = totalVentas > 0 ? num(totales.total) / totalVentas : 0
+                        const topVendedor = (userData || []).length > 0
+                            ? (userData || []).reduce((a, b) => num(b.ingresos_totales) > num(a.ingresos_totales) ? b : a)
+                            : { nombre: '—', ingresos_totales: 0, total_ventas: 0 }
+                        const topCliente = (clientData || []).length > 0
+                            ? (clientData || []).reduce((a, b) => num(b.total_gastado) > num(a.total_gastado) ? b : a)
+                            : { nombre: '—', total_gastado: 0, total_compras: 0 }
+                        const metodoColors = ['#a855f7', '#3b82f6', '#10b981', '#f59e0b']
+                        const catColors = ['#a855f7','#3b82f6','#10b981','#f59e0b','#ef4444']
+                        const prodColors = ['#a855f7','#8b5cf6','#7c3aed','#6d28d9','#5b21b6','#4c1d95','#3b82f6','#2563eb','#1d4ed8','#1e40af']
 
-                            {/* Card 2: Total Pageviews */}
-                            <div className="bg-white rounded-[24px] border border-gray-100/90 p-5 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between h-[115px]">
-                                <div className="space-y-1">
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Pageviews</p>
-                                    <p className="text-3xl font-black text-[#10c0b8] font-display">
-                                        {((data.totales?.total_ventas || 0) * 8246 + 252292).toLocaleString()}
-                                    </p>
-                                </div>
-                                <div className="w-[110px] h-[55px] flex items-end justify-between px-1 shrink-0">
-                                    {[20, 35, 80, 95, 45, 30].map((h, i) => (
-                                        <div key={i} className="w-[10px] rounded-[3px] transition-all hover:opacity-80" style={{ height: `${h}%`, backgroundColor: i === 2 ? '#ff9655' : i === 3 ? '#3ee2d8' : '#10c0b8' }} />
+                        return (
+                            <>
+                                {/* 6 KPI Cards */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                                    {[
+                                        { label: 'Total Ventas', value: totalVentas.toLocaleString(), sub: 'transacciones', bg: 'bg-orchid-50', text: 'text-orchid-700', icon: '🛒' },
+                                        { label: 'Ticket Promedio', value: fmt(ticketProm), sub: 'por transacción', bg: 'bg-blue-50', text: 'text-blue-700', icon: '🎫' },
+                                        { label: 'Margen Bruto', value: `${margen.toFixed(1)}%`, sub: fmt(utilidad) + ' utilidad', bg: 'bg-emerald-50', text: 'text-emerald-700', icon: '📈' },
+                                        { label: 'IVA Generado', value: fmt(iva), sub: 'total cobrado', bg: 'bg-amber-50', text: 'text-amber-700', icon: '🏛️' },
+                                        { label: 'Descuentos', value: fmt(descuentos), sub: 'otorgados', bg: 'bg-red-50', text: 'text-red-700', icon: '🏷️' },
+                                        { label: 'Costo Total', value: fmt(costo), sub: 'mercancía vendida', bg: 'bg-indigo-50', text: 'text-indigo-700', icon: '📦' },
+                                    ].map((k, i) => (
+                                        <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5">
+                                            <div className={`inline-flex items-center justify-center w-9 h-9 rounded-xl ${k.bg} text-lg mb-3`}>{k.icon}</div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{k.label}</p>
+                                            <p className={`text-xl font-black ${k.text} leading-tight`}>{k.value}</p>
+                                            <p className="text-[10px] text-slate-400 mt-1">{k.sub}</p>
+                                        </div>
                                     ))}
                                 </div>
-                            </div>
 
-                            {/* Card 3: Total Visits */}
-                            <div className="bg-white rounded-[24px] border border-gray-100/90 p-5 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between h-[115px]">
-                                <div className="space-y-1">
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Visits</p>
-                                    <p className="text-3xl font-black text-[#10c0b8] font-display">
-                                        {((data.totales?.total_ventas || 0) * 1845 + 57841).toLocaleString()}
-                                    </p>
+                                {/* Row 2 */}
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                    {/* Pie por método */}
+                                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+                                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Ventas por Método de Pago</h3>
+                                        {(data.por_metodo || []).length > 0 ? (
+                                            <>
+                                                <ResponsiveContainer width="100%" height={180}>
+                                                    <PieChart>
+                                                        <Pie data={(data.por_metodo || []).map(m => ({ name: m.metodo_pago, value: num(m.total) }))} cx="50%" cy="50%" outerRadius={80} innerRadius={45} dataKey="value" stroke="none">
+                                                            {(data.por_metodo || []).map((_, i) => <Cell key={i} fill={metodoColors[i % metodoColors.length]} />)}
+                                                        </Pie>
+                                                        <Tooltip formatter={v => fmt(v)} contentStyle={{ borderRadius: '12px', fontSize: '11px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                                <div className="space-y-2 mt-2">
+                                                    {(data.por_metodo || []).map((m, i) => {
+                                                        const tot = (data.por_metodo || []).reduce((s, x) => s + num(x.total), 0)
+                                                        return (
+                                                            <div key={i} className="flex items-center justify-between text-[11px]">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: metodoColors[i % metodoColors.length] }} />
+                                                                    <span className="capitalize font-medium text-slate-600">{m.metodo_pago}</span>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <span className="font-bold text-slate-700">{pct(m.total, tot)}</span>
+                                                                    <span className="text-slate-400 ml-1">· {fmt(m.total)}</span>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </>
+                                        ) : <p className="text-center text-slate-400 text-xs py-16">Sin datos</p>}
+                                    </div>
+
+                                    {/* Top Categorías */}
+                                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+                                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Top Categorías</h3>
+                                        <div className="space-y-3">
+                                            {(data.por_categoria || []).slice(0, 5).map((c, i) => {
+                                                const maxCat = num((data.por_categoria || [])[0]?.total)
+                                                return (
+                                                    <div key={i}>
+                                                        <div className="flex justify-between text-[11px] mb-1">
+                                                            <span className="font-semibold text-slate-700 truncate max-w-[130px]">{c.categoria}</span>
+                                                            <div className="text-right shrink-0">
+                                                                <span className="font-bold text-slate-800">{fmt(c.total)}</span>
+                                                                <span className="text-slate-400 ml-1">({c.cantidad} uds)</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${maxCat > 0 ? (num(c.total)/maxCat*100) : 0}%`, backgroundColor: catColors[i] }} />
+                                                        </div>
+                                                        <p className="text-[9px] text-slate-400 mt-0.5">Margen: {pct(c.utilidad, num(c.total))}</p>
+                                                    </div>
+                                                )
+                                            })}
+                                            {(!data.por_categoria || data.por_categoria.length === 0) && <p className="text-center text-slate-400 text-xs py-10">Sin datos</p>}
+                                        </div>
+                                    </div>
+
+                                    {/* Top Vendedor / Top Cliente / Eficiencia */}
+                                    <div className="space-y-4">
+                                        <div className="bg-gradient-to-br from-orchid-600 to-purple-700 rounded-2xl p-5 shadow-lg shadow-orchid-200 text-white">
+                                            <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-3">⭐ Top Vendedor del Período</p>
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black">{topVendedor.nombre.charAt(0)}</div>
+                                                <div>
+                                                    <p className="font-black text-lg leading-tight">{topVendedor.nombre}</p>
+                                                    <p className="text-xs opacity-70">{fmt(topVendedor.ingresos_totales)} en ventas</p>
+                                                    <p className="text-xs opacity-60">{topVendedor.total_ventas} transacciones</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-5 shadow-lg shadow-blue-200 text-white">
+                                            <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-3">👑 Top Cliente del Período</p>
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black">{topCliente.nombre.charAt(0)}</div>
+                                                <div>
+                                                    <p className="font-black text-lg leading-tight">{topCliente.nombre}</p>
+                                                    <p className="text-xs opacity-70">{fmt(topCliente.total_gastado)} gastado</p>
+                                                    <p className="text-xs opacity-60">{topCliente.total_compras} compras · {Math.floor(num(topCliente.total_gastado) / 10)} pts</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Eficiencia Operativa</p>
+                                            <div className="space-y-3">
+                                                {[{ label: 'Margen bruto', val: margen, color: 'bg-emerald-500', textColor: 'text-emerald-600', fmt: v => `${v.toFixed(1)}%` },
+                                                  { label: '% Descuentos/Subtotal', val: subtotal > 0 ? descuentos/subtotal*100 : 0, color: 'bg-amber-400', textColor: 'text-amber-600', fmt: v => `${v.toFixed(1)}%` },
+                                                  { label: '% Costo/Ingresos', val: subtotal > 0 ? costo/subtotal*100 : 0, color: 'bg-rose-400', textColor: 'text-rose-600', fmt: v => `${v.toFixed(1)}%` }
+                                                ].map((bar, i) => (
+                                                    <div key={i}>
+                                                        <div className="flex justify-between text-[11px] mb-1">
+                                                            <span className="text-slate-500">{bar.label}</span>
+                                                            <span className={`font-bold ${bar.textColor}`}>{bar.fmt(bar.val)}</span>
+                                                        </div>
+                                                        <div className="h-2 bg-slate-100 rounded-full"><div className={`h-full rounded-full ${bar.color}`} style={{ width: `${Math.min(bar.val, 100)}%` }} /></div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="w-[110px] h-[55px] flex items-end justify-between px-1 shrink-0">
-                                    {[15, 25, 90, 80, 65, 10].map((h, i) => (
-                                        <div key={i} className="w-[10px] rounded-[3px] transition-all hover:opacity-80" style={{ height: `${h}%`, backgroundColor: i === 2 ? '#ff9655' : i === 3 ? '#ffb080' : '#10c0b8' }} />
-                                    ))}
+
+                                {/* Row 3: Tendencia + Top Productos */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+                                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Tendencia de Ventas Diarias</h3>
+                                        {(data.por_dia || []).length > 0 ? (
+                                            <>
+                                                <ResponsiveContainer width="100%" height={200}>
+                                                    <BarChart data={(data.por_dia || []).map(d => ({ fecha: new Date(d.fecha).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }), total: num(d.total), utilidad: num(d.subtotal) - num(d.costo) }))} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barGap={4} barCategoryGap="30%">
+                                                        <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                                                        <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                                                        <Tooltip formatter={v => fmt(v)} contentStyle={{ borderRadius: '12px', fontSize: '11px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                                                        <Bar dataKey="total" name="Venta" fill="#a855f7" radius={[6,6,0,0]} maxBarSize={28} opacity={0.85} />
+                                                        <Bar dataKey="utilidad" name="Utilidad" fill="#10b981" radius={[6,6,0,0]} maxBarSize={28} opacity={0.85} />
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                                <div className="flex gap-4 mt-2 text-[10px] font-bold uppercase tracking-wider">
+                                                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-orchid-500" /> Total Venta</div>
+                                                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Utilidad</div>
+                                                </div>
+                                            </>
+                                        ) : <p className="text-center text-slate-400 text-xs py-16">Sin datos de ventas diarias</p>}
+                                    </div>
+                                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+                                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Top 10 Productos más Vendidos</h3>
+                                        <div className="space-y-2.5 overflow-y-auto max-h-[240px] pr-1">
+                                            {(data.top_productos || []).slice(0, 10).map((p, i) => {
+                                                const maxQ = num((data.top_productos || [])[0]?.cantidad)
+                                                return (
+                                                    <div key={i} className="flex items-center gap-3">
+                                                        <div className="w-5 h-5 shrink-0 rounded-lg flex items-center justify-center text-[9px] font-black text-white" style={{ backgroundColor: prodColors[i] }}>{i+1}</div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex justify-between text-[11px] mb-0.5">
+                                                                <span className="font-semibold text-slate-700 truncate max-w-[160px]">{p.nombre}</span>
+                                                                <span className="font-bold text-slate-800 shrink-0 ml-1">{p.cantidad} uds</span>
+                                                            </div>
+                                                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                                <div className="h-full rounded-full" style={{ width: `${maxQ > 0 ? (num(p.cantidad)/maxQ*100) : 0}%`, backgroundColor: prodColors[i] }} />
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-[10px] text-slate-400 shrink-0">{fmt(p.total)}</span>
+                                                    </div>
+                                                )
+                                            })}
+                                            {(!data.top_productos || data.top_productos.length === 0) && <p className="text-center text-slate-400 text-xs py-10">Sin datos de productos</p>}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            </>
+                        )
+                    })()}
+
+                    {/* Métricas Reales del Sistema */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        {/* Left Col: 3 metric cards con datos reales */}
+                        <div className="space-y-3">
+                            {/* Card 1: Total Artículos Vendidos */}
+                            {(() => {
+                                const totalArticulos = (data.top_productos || []).reduce((s, p) => s + num(p.cantidad), 0)
+                                const maxDay = Math.max(...(data.por_dia || []).map(d => num(d.total)), 1)
+                                const barData = (data.por_dia || []).slice(-6).map(d => Math.round((num(d.total) / maxDay) * 90) || 5)
+                                const bars = barData.length >= 6 ? barData : [...Array(6 - barData.length).fill(5), ...barData]
+                                return (
+                                    <div className="bg-white rounded-[24px] border border-gray-100/90 p-5 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between h-[115px]">
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Artículos Vendidos</p>
+                                            <p className="text-3xl font-black text-[#10c0b8] font-display">{totalArticulos.toLocaleString()}</p>
+                                            <p className="text-[10px] text-slate-400">unidades en el período</p>
+                                        </div>
+                                        <div className="w-[110px] h-[55px] flex items-end justify-between px-1 shrink-0">
+                                            {bars.map((h, i) => (
+                                                <div key={i} className="w-[10px] rounded-[3px] transition-all hover:opacity-80" style={{ height: `${h}%`, backgroundColor: i === bars.length - 1 ? '#ff9655' : i === bars.length - 2 ? '#10c0b8' : '#3ee2d8' }} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            })()}
+
+                            {/* Card 2: Clientes Atendidos */}
+                            {(() => {
+                                const clientesUnicos = clientData?.length || 0
+                                const maxCli = Math.max(clientesUnicos, 1)
+                                const barsCli = (data.por_dia || []).slice(-6).map((_, i, arr) => {
+                                    const idx = arr.length - 6 + i
+                                    return idx >= 0 ? Math.max(Math.round(((idx + 1) / arr.length) * 80), 5) : 5
+                                })
+                                const barsCliPad = barsCli.length >= 6 ? barsCli : [...Array(6 - barsCli.length).fill(5), ...barsCli]
+                                return (
+                                    <div className="bg-white rounded-[24px] border border-gray-100/90 p-5 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between h-[115px]">
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Clientes Atendidos</p>
+                                            <p className="text-3xl font-black text-[#10c0b8] font-display">{clientesUnicos.toLocaleString()}</p>
+                                            <p className="text-[10px] text-slate-400">clientes en el período</p>
+                                        </div>
+                                        <div className="w-[110px] h-[55px] flex items-end justify-between px-1 shrink-0">
+                                            {barsCliPad.map((h, i) => (
+                                                <div key={i} className="w-[10px] rounded-[3px] transition-all hover:opacity-80" style={{ height: `${h}%`, backgroundColor: i === barsCliPad.length - 1 ? '#ff9655' : i === barsCliPad.length - 2 ? '#3ee2d8' : '#10c0b8' }} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            })()}
+
+                            {/* Card 3: Promedio Diario de Ingresos */}
+                            {(() => {
+                                const dias = (data.por_dia || []).length || 1
+                                const promDiario = num(data.totales?.total) / dias
+                                const maxDia = Math.max(...(data.por_dia || []).map(d => num(d.total)), 1)
+                                const barsD = (data.por_dia || []).slice(-6).map(d => Math.max(Math.round((num(d.total) / maxDia) * 90), 5))
+                                const barsDPad = barsD.length >= 6 ? barsD : [...Array(6 - barsD.length).fill(5), ...barsD]
+                                return (
+                                    <div className="bg-white rounded-[24px] border border-gray-100/90 p-5 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between h-[115px]">
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Promedio Diario</p>
+                                            <p className="text-3xl font-black text-[#10c0b8] font-display">{fmt(promDiario)}</p>
+                                            <p className="text-[10px] text-slate-400">ingresos / día</p>
+                                        </div>
+                                        <div className="w-[110px] h-[55px] flex items-end justify-between px-1 shrink-0">
+                                            {barsDPad.map((h, i) => (
+                                                <div key={i} className="w-[10px] rounded-[3px] transition-all hover:opacity-80" style={{ height: `${h}%`, backgroundColor: i === barsDPad.length - 1 ? '#ff9655' : i === barsDPad.length - 2 ? '#ffb080' : '#10c0b8' }} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            })()}
                         </div>
+                    </div>
 
-                        {/* Right Col: Large Card with Costs info & Pie Chart */}
-                        <div className="lg:col-span-2 bg-white rounded-[32px] border border-gray-100/90 p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
-                            {/* Costs list */}
+                        {/* Indicadores de Rentabilidad + Pie de Métodos de Pago */}
+                        <div className="bg-white rounded-[32px] border border-gray-100/90 p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
+                            {/* Métricas de rentabilidad reales */}
                             <div className="flex-1 space-y-6 w-full">
-                                {/* Cost 1 */}
+                                {/* Indicador 1: Ingreso por cliente */}
                                 <div className="flex items-start gap-4">
                                     <div className="w-[44px] h-[44px] rounded-[14px] bg-[#5584e8]/10 shrink-0 flex items-center justify-center">
                                         <div className="w-[18px] h-[18px] rounded-[5px] bg-[#5584e8]" />
                                     </div>
                                     <div className="space-y-0.5">
-                                        <h4 className="text-sm font-black text-slate-700">Cost per Customer</h4>
+                                        <h4 className="text-sm font-black text-slate-700">Ingreso por Cliente</h4>
                                         <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-                                            L.I. es un texto ficticio de la industria. Promedio: {fmt(num(data.totales?.subtotal) / (clientData?.length || 1))} por cliente.
+                                            Promedio de ingreso generado por cada cliente atendido en el período.
                                         </p>
+                                        <p className="text-base font-black text-[#5584e8]">{fmt(num(data.totales?.subtotal) / (clientData?.length || 1))}</p>
                                     </div>
                                 </div>
 
-                                {/* Cost 2 */}
+                                {/* Indicador 2: Costo por transacción */}
                                 <div className="flex items-start gap-4">
                                     <div className="w-[44px] h-[44px] rounded-[14px] bg-[#ff9655]/10 shrink-0 flex items-center justify-center">
                                         <div className="w-[18px] h-[18px] rounded-[5px] bg-[#ff9655]" />
                                     </div>
                                     <div className="space-y-0.5">
-                                        <h4 className="text-sm font-black text-[#ff9655]">Cost per MQL</h4>
+                                        <h4 className="text-sm font-black text-[#ff9655]">Costo por Transacción</h4>
                                         <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-                                            L.I. es un texto ficticio de la industria. Costo mercancía/transacción: {fmt(num(data.totales?.costo_total) / (data.totales?.total_ventas || 1))}.
+                                            Costo promedio de mercancía vendida por cada venta realizada.
                                         </p>
+                                        <p className="text-base font-black text-[#ff9655]">{fmt(num(data.totales?.costo_total) / (num(data.totales?.total_ventas) || 1))}</p>
                                     </div>
                                 </div>
 
-                                {/* Cost 3 */}
+                                {/* Indicador 3: Utilidad por transacción */}
                                 <div className="flex items-start gap-4">
                                     <div className="w-[44px] h-[44px] rounded-[14px] bg-[#10c0b8]/10 shrink-0 flex items-center justify-center">
                                         <div className="w-[18px] h-[18px] rounded-[5px] bg-[#10c0b8]" />
                                     </div>
                                     <div className="space-y-0.5">
-                                        <h4 className="text-sm font-black text-[#10c0b8]">Cost per SQL</h4>
+                                        <h4 className="text-sm font-black text-[#10c0b8]">Utilidad por Transacción</h4>
                                         <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-                                            L.I. es un texto ficticio de la industria. Margen neto/transacción: {fmt((num(data.totales?.subtotal) - num(data.totales?.costo_total)) / (data.totales?.total_ventas || 1))}.
+                                            Ganancia neta promedio generada por cada venta en el período.
                                         </p>
+                                        <p className="text-base font-black text-[#10c0b8]">{fmt((num(data.totales?.subtotal) - num(data.totales?.costo_total)) / (num(data.totales?.total_ventas) || 1))}</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Pie Chart */}
+                            {/* Pie Chart: Métodos de pago reales */}
                             <div className="w-full md:w-auto flex flex-col items-center justify-center shrink-0 pr-4">
-                                <h4 className="text-xs font-black text-slate-500 mb-4 text-center uppercase tracking-widest">Revenue by Source</h4>
-                                <div className="relative w-[180px] h-[180px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie
-                                                data={[
-                                                    { name: 'Blue (25%)', value: 25 },
-                                                    { name: 'Orange (35%)', value: 35 },
-                                                    { name: 'Teal (75%)', value: 75 }
-                                                ]}
-                                                cx="50%"
-                                                cy="50%"
-                                                outerRadius={90}
-                                                innerRadius={0}
-                                                dataKey="value"
-                                                stroke="none"
-                                            >
-                                                <Cell fill="#5584e8" />
-                                                <Cell fill="#ff9655" />
-                                                <Cell fill="#10c0b8" />
-                                            </Pie>
-                                            <Tooltip formatter={(v) => `${v}%`} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                    {/* Exact labels mimicking the screenshot */}
-                                    <div className="absolute top-[28%] left-[25%] text-xs font-bold text-white pointer-events-none drop-shadow-sm">25%</div>
-                                    <div className="absolute top-[40%] left-[65%] text-xs font-bold text-white pointer-events-none drop-shadow-sm">75%</div>
-                                    <div className="absolute top-[42%] left-[32%] text-xs font-bold text-white pointer-events-none drop-shadow-sm">35%</div>
-                                </div>
+                                <h4 className="text-xs font-black text-slate-500 mb-4 text-center uppercase tracking-widest">Métodos de Pago</h4>
+                                {(data.por_metodo || []).length > 0 ? (
+                                    <>
+                                        <div className="relative w-[180px] h-[180px]">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={(data.por_metodo || []).map(m => ({ name: m.metodo_pago, value: num(m.total) }))}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        outerRadius={90}
+                                                        innerRadius={0}
+                                                        dataKey="value"
+                                                        stroke="none"
+                                                        label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                                                            const RADIAN = Math.PI / 180
+                                                            const radius = innerRadius + (outerRadius - innerRadius) * 0.5
+                                                            const x = cx + radius * Math.cos(-midAngle * RADIAN)
+                                                            const y = cy + radius * Math.sin(-midAngle * RADIAN)
+                                                            return percent > 0.05 ? (
+                                                                <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" style={{ fontSize: '10px', fontWeight: 900 }}>
+                                                                    {`${(percent * 100).toFixed(0)}%`}
+                                                                </text>
+                                                            ) : null
+                                                        }}
+                                                        labelLine={false}
+                                                    >
+                                                        {(data.por_metodo || []).map((_, i) => (
+                                                            <Cell key={i} fill={['#5584e8', '#ff9655', '#10c0b8', '#a855f7', '#10b981'][i % 5]} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip formatter={(v) => fmt(v)} contentStyle={{ borderRadius: '12px', fontSize: '11px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <div className="space-y-1.5 mt-3 w-full">
+                                            {(data.por_metodo || []).map((m, i) => {
+                                                const tot = (data.por_metodo || []).reduce((s, x) => s + num(x.total), 0)
+                                                const colors = ['#5584e8', '#ff9655', '#10c0b8', '#a855f7', '#10b981']
+                                                return (
+                                                    <div key={i} className="flex items-center justify-between text-[10px]">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[i % 5] }} />
+                                                            <span className="capitalize text-slate-600 font-medium">{m.metodo_pago}</span>
+                                                        </div>
+                                                        <span className="font-bold text-slate-700">{pct(m.total, tot)} · {fmt(m.total)}</span>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </>
+                                ) : <p className="text-center text-slate-400 text-xs py-16">Sin datos de pagos</p>}
                             </div>
                         </div>
-                    </div>
 
-                    {/* Bottom Panel: Statistic Graph Timeline */}
+                    {/* Bottom Panel: Tendencia de Ventas del Período */}
                     <div className="bg-white rounded-[32px] border border-gray-100/90 p-8 shadow-sm relative overflow-hidden">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">Statistic Graph</h3>
+                            <div>
+                                <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">Tendencia de Ventas</h3>
+                                <p className="text-[10px] text-slate-400 mt-0.5">Evolución diaria de ingresos y utilidad en el período</p>
+                            </div>
+                            <div className="flex gap-4 text-[10px] font-bold uppercase tracking-wider">
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-[#5584e8]" /> Ingresos</div>
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-[#10c0b8]" /> Utilidad</div>
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-[#ff9655]" /> Costo</div>
+                            </div>
                         </div>
-                        
-                        <div className="relative pt-16 pb-16 px-4 md:px-12 flex items-center justify-between gap-1">
-                            {/* Horizontal Timeline Line */}
-                            <div className="absolute inset-x-8 md:inset-x-16 top-[50%] h-[2px] bg-slate-200 z-0" />
-                            
-                            {[
-                                { year: '2015', label: 'Lorem Ipsum is simply dummy.', top: false },
-                                { year: '2016', label: 'Lorem Ipsum is simply dummy.', top: true },
-                                { year: '2017', label: 'Lorem Ipsum is simply dummy.', top: false },
-                                { year: '2018', label: 'Lorem Ipsum is simply dummy.', top: true },
-                                { year: '2019', label: 'Lorem Ipsum is simply dummy.', top: false },
-                                { year: '2020', label: 'Lorem Ipsum is simply dummy.', top: true },
-                                { year: '2021', label: 'Lorem Ipsum is simply dummy.', top: false },
-                            ].map((item, idx) => (
-                                <div key={idx} className="relative z-10 flex flex-col items-center flex-1">
-                                    {/* Timeline Circle */}
-                                    <div className="w-[10px] h-[10px] rounded-full bg-[#ff9655] border-2 border-white shadow-sm ring-2 ring-[#ff9655]/20" />
-                                    
-                                    {/* Milestone Card */}
-                                    <div 
-                                        className="absolute flex flex-col items-center text-center w-[110px]"
-                                        style={{
-                                            top: item.top ? 'auto' : '14px',
-                                            bottom: item.top ? '14px' : 'auto',
-                                        }}
-                                    >
-                                        <span className="bg-[#10c0b8] text-white text-[9px] font-black px-2.5 py-0.5 rounded-[6px] shadow-sm mb-1 tracking-wider">{item.year}</span>
-                                        <p className="text-[9px] text-slate-400 leading-tight font-medium max-w-[85px]">{item.label}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        {(data.por_dia || []).length > 0 ? (
+                            <ResponsiveContainer width="100%" height={220}>
+                                <LineChart
+                                    data={(data.por_dia || []).map(d => ({
+                                        fecha: new Date(d.fecha).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }),
+                                        ingresos: num(d.subtotal),
+                                        utilidad: num(d.subtotal) - num(d.costo),
+                                        costo: num(d.costo),
+                                    }))}
+                                    margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                                >
+                                    <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                                    <Tooltip
+                                        formatter={(v, name) => [fmt(v), name === 'ingresos' ? 'Ingresos' : name === 'utilidad' ? 'Utilidad' : 'Costo']}
+                                        contentStyle={{ borderRadius: '14px', fontSize: '11px', border: 'none', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.15)' }}
+                                    />
+                                    <Line type="monotone" dataKey="ingresos" stroke="#5584e8" strokeWidth={2.5} dot={{ r: 4, fill: '#5584e8', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Line type="monotone" dataKey="utilidad" stroke="#10c0b8" strokeWidth={2.5} dot={{ r: 4, fill: '#10c0b8', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Line type="monotone" dataKey="costo" stroke="#ff9655" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 3, fill: '#ff9655', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 5 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="flex items-center justify-center h-[220px] text-slate-300">
+                                <p className="text-sm">Sin datos de ventas diarias en este período</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
